@@ -1,0 +1,33 @@
+{
+    "symbolInfo": {
+      "skipRestore": {
+        "longName": "no-restore",
+        "shortName": ""
+      },
+      "DatabaseType": {
+        "longName": "database-type",
+        "shortName": "db"
+      },
+      "UseKafka": {
+        "longName": "use-kafka",
+        "shortName": "kafka"
+      },
+      "UseRabbitMQ": {
+        "longName": "use-rabbitmq",
+        "shortName": "rmq"
+      },
+      "UseMetrics": {
+        "longName": "use-metrics",
+        "shortName": "metrics"
+      },
+      "Version": {
+        "longName": "version",
+        "shortName": "v"
+      }
+    },
+    "usageExamples": [
+      "-n MyMicroservice",
+      "-n MyMicroservice --database-type mongodb",
+      "-n MyMicroservice --use-kafka --use-rabbitmq"
+    ]
+  }

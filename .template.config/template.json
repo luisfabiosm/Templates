@@ -1,0 +1,184 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Fabio Magalhaes",
+  "classifications": ["Microservice", "Web", "API", "Hexagonal"],
+  "identity": "microservice.api",
+  "name": "Microservice API with Clean and Hexagonal Architecture v1",
+  "shortName": "microservice.api",
+  "sourceName": "microservice.api",
+  "guids": ["GUIDPLACEHOLDER1", "GUIDPLACEHOLDER2"],
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "preferNameDirectory": true,
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(!skipRestore)",
+          "exclude": [
+            "**/[Bb]in/**",
+            "**/[Oo]bj/**",
+            "**/.template.config/**/*",
+            "**/*.filelist",
+            "**/*.user",
+            "**/*.lock.json"
+          ]
+        }
+      ]
+    }
+  ],
+  "symbols": {
+    "skipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic restore of the project on create.",
+      "defaultValue": "false"
+    },
+    "Version": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "1.0.1",
+      "description": "The version of the microservice"
+    },
+    "DatabaseType": {
+      "type": "parameter",
+      "datatype": "choice",
+      "choices": [
+        { "choice": "none", "description": "No database" },
+        { "choice": "mongodb", "description": "MongoDB database" },
+        { "choice": "sqlserver", "description": "SQL Server database" },
+        { "choice": "postgresql", "description": "PostgreSQL database" }
+      ],
+      "defaultValue": "sqlserver",
+      "description": "The type of database to use"
+    },
+    "UseKafka": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Include Kafka messaging adapter"
+    },
+    "UseRabbitMQ": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Include RabbitMQ messaging adapter"
+    },
+    "UseMetrics": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Include metrics adapter"
+    },
+    "SqlServerCondition": {
+      "type": "computed",
+      "value": "(DatabaseType == \"sqlserver\")",
+      "fileRename": "SqlServerCondition"
+    },
+    "PSQLCondition": {
+      "type": "computed",
+      "value": "(DatabaseType == \"postgresql\")",
+      "fileRename": "PSQLCondition"
+    },
+    "NoDatabaseCondition": {
+      "type": "computed",
+      "value": "(DatabaseType == \"none\")",
+      "fileRename": "NoDatabaseCondition"
+    },
+    "KafkaCondition": {
+      "type": "computed",
+      "value": "(UseKafka == \"true\")",
+      "fileRename": "UseKafka"
+    },
+    "RabbitMQCondition": {
+      "type": "computed",
+      "value": "(UseRabbitMQ == \"true\")",
+      "fileRename": "UseRabbitMQ"
+    }
+  },
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "modifiers": [
+        {
+          "condition": "(DatabaseType == \"none\" || DatabaseType == \"\")",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Database/NoSQL/**/*", "src/microservice.api/Adapters/Outbound/Database/SQL/**/*"]
+        },
+        {
+          "condition": "(DatabaseType == \"mongodb\")",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Database/SQL/**/*"]
+        },
+        {
+          "condition": "(DatabaseType == \"sqlserver\" || DatabaseType == \"postgresql\")",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Database/NoSQL/**/*"]
+        },
+        {
+          "condition": "(!UseKafka)",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Messaging/Kafka/**/*"]
+        },
+        {
+          "condition": "(!UseRabbitMQ)",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Messaging/RabbitMQ/**/*"]
+        },
+        {
+          "condition": "(!UseMetrics)",
+          "exclude": ["src/microservice.api/Adapters/Outbound/Metrics/**/*"]
+        }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "description": "Create solution file",
+      "manualInstructions": [
+        { "text": "Run 'dotnet new sln'" }
+      ],
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
+      "args": {
+        "executable": "dotnet",
+        "args": "new sln"
+      },
+      "continueOnError": true
+    },
+	{
+      "description": "Add project to solution",
+      "manualInstructions": [
+        { "text": "Run 'dotnet sln add src/{PROJECT_NAME}/{PROJECT_NAME}.csproj'" }
+      ],
+      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
+      "args": {
+        "executable": "dotnet",
+        "args": "sln add src/microservice.api/microservice.api.csproj"
+      },
+      "continueOnError": true
+    },
+    {
+      "condition": "(!skipRestore)",
+      "description": "Restore NuGet packages required by this project.",
+      "manualInstructions": [
+        { "text": "Run 'dotnet restore'" }
+      ],
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "continueOnError": true,
+      "args": {
+        "projectPath": "src/microservice.api/microservice.api.csproj"
+      }
+    }
+  ],
+  "primaryOutputs": [
+    {
+      "path": "src/microservice.api/microservice.api.csproj"
+    }
+  ],
+  "special": {
+    "csproj": {
+      "PropertyGroup": {
+        "Version": "{{Version}}",
+        "DefineConstants": "$([System.String]::Join(' ',$([System.String]::new('TRACE DEBUG').Split(' '))$(if ($([System.String]::Equals('$(DatabaseType)', 'mongodb'))),' MongoDbCondition')$(if ($([System.String]::Equals('$(DatabaseType)', 'sqlserver'))),' SqlServerCondition')$(if ($([System.String]::Equals('$(DatabaseType)', 'postgresql'))),' PSQLCondition'))"
+      }
+    }
+  }
+}
