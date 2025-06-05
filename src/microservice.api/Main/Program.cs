@@ -1,4 +1,4 @@
-using Adapters.Inbound.Extensions;
+using Adapters.Inbound.WebApi.Extensions;
 using Configurations;
 using System.Reflection;
 

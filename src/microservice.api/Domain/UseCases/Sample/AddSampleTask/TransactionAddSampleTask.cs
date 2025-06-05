@@ -1,23 +1,42 @@
-﻿
-using Domain.Core.Base;
+﻿using Domain.Core.Base;
+using Domain.Core.Models.Dto;
 using Domain.Core.Models.Responses;
-using Domain.Core.ResultPattern;
 
 namespace Domain.UseCases.Sample.AddSampleTask
 {
-    /// <summary>
-    /// Command para adicionar SampleTask seguindo CQRS
-    /// </summary>
-    public sealed record TransactionAddSampleTask : BaseTransaction<BSResult<ResponseNewSampleTask>>
+    public record TransactionAddSampleTask : BaseTransaction<BaseReturn<ResponseNewSampleTask>>
     {
-        public string Name { get; }
-        public int TimerInMilliseconds { get; }
+        private SampleTaskDto _sampleTaskDto;
 
-        public TransactionAddSampleTask(string name, int timerInMilliseconds)
-            : base(code: 1)
+
+        public string Name { get; private set; } = string.Empty;
+
+        public int TimerInMilliseconds { get; init; }
+
+        public bool IsEnable { get; init; }
+
+
+        public SampleTaskDto getSampleTaskDto()
         {
-            Name = name ?? throw new ArgumentNullException(nameof(name));
-            TimerInMilliseconds = timerInMilliseconds;
+            return _sampleTaskDto;
         }
+
+      
+
+        public TransactionAddSampleTask(string name, int timer, bool isenable)
+        {
+            Code = 1;
+            Name = name;
+            TimerInMilliseconds = timer;
+            IsEnable = isenable;
+
+
+            _sampleTaskDto = new SampleTaskDto(Name, IsEnable, TimerInMilliseconds );
+
+
+        }
+
+
+
     }
 }

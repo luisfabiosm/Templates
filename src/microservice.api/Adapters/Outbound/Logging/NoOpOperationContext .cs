@@ -5,16 +5,16 @@ namespace Adapters.Outbound.Logging
 {
     public class NoOpOperationContext: IOperationContext
     {
-        public Activity ApiActivity { get; }
+        public Activity Activity { get; }
 
         public NoOpOperationContext(Activity activity)
         {
-            ApiActivity = activity ?? Activity.Current;
+            Activity = activity ?? Activity.Current;
         }
 
         public void Dispose()
         {
-            ApiActivity?.Dispose();
+            Activity?.Dispose();
         }
 
         public void SetTag(string key, string value) { }

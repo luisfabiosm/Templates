@@ -1,83 +1,81 @@
-﻿using Domain.Core.Interfaces.Outbound;
+﻿using System;
+using System.Reflection;
+using Domain.Core.Interfaces.Outbound;
 using Domain.Core.Settings;
+using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
-using System.Reflection;
-
 
 namespace Adapters.Outbound.Logging
 {
     public static class LoggingExtensions
     {
-        public static IServiceCollection AddOptimizedLogging(
-            this IServiceCollection services,
-            IConfiguration configuration)
+
+        public static IServiceCollection AddLoggingAdapter(this IServiceCollection services, IConfiguration configuration)
         {
-            // Configure Serilog with structured logging
+
+
+            services.Configure<OtlpSettings>(options =>
+            {
+                var section = configuration.GetSection("AppSettings:Otlp");
+                section.Bind(options);
+
+                // Override specific values from environment variables or constants
+                options.Endpoint = Environment.GetEnvironmentVariable("OPEN_TELEMETRY_ENDPOINT") ?? options.Endpoint;
+                Console.WriteLine($"OPEN_TELEMETRY_ENDPOINT: {options.Endpoint}");
+            });
+
+            // Configuração do Serilog
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(configuration)
                 .Enrich.FromLogContext()
-                .Enrich.WithProperty("ServiceName", Assembly.GetExecutingAssembly().GetName().Name)
-                .Enrich.WithProperty("ServiceVersion", Assembly.GetExecutingAssembly().GetName().Version?.ToString())
-                .WriteTo.Console(outputTemplate:
-                    "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+                .WriteTo.Console()
+                //.WriteTo.File("logs/app.log", rollingInterval: RollingInterval.Day)
                 .CreateLogger();
 
-            // Configure Microsoft.Extensions.Logging
-            services.AddLogging(builder =>
+            // Configuração do ILogger
+            services.AddLogging(loggingBuilder =>
             {
-                builder.ClearProviders();
-                builder.AddSerilog(Log.Logger, dispose: true);
-                builder.SetMinimumLevel(LogLevel.Information);
+                loggingBuilder.ClearProviders();
+                loggingBuilder.AddSerilog();
             });
 
-            // Register structured logging adapter
+
+
+            // Registrar o LoggingAdapter
             services.AddSingleton<ILoggingAdapter>(provider =>
             {
-                var logger = provider.GetRequiredService<ILogger<StructuredLoggingAdapter>>();
-                var serviceName = Assembly.GetExecutingAssembly().GetName().Name ?? "microservice-api";
-                return new StructuredLoggingAdapter(logger, serviceName);
+                var _logger = provider.GetRequiredService<ILogger<LoggingAdapter>>();
+                return new LoggingAdapter(Assembly.GetExecutingAssembly().GetName().Name);
             });
 
-            // Configure OpenTelemetry
-            var resourceBuilder = ResourceBuilder.CreateDefault()
-                .AddService(
-                    serviceName: Assembly.GetExecutingAssembly().GetName().Name ?? "microservice-api",
-                    serviceVersion: Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0");
+            // Configuração do OpenTelemetry
+            var _resourceBuilder = ResourceBuilder.CreateDefault()
+              .AddService(
+                  serviceName: Assembly.GetExecutingAssembly().GetName().Name ?? "",
+                  serviceVersion: Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0");
+
 
             services.AddOpenTelemetry()
-                .WithTracing(tracing =>
-                {
-                    tracing
-                        .SetResourceBuilder(resourceBuilder)
-                        .AddSource(Assembly.GetExecutingAssembly().GetName().Name)
-                        .AddAspNetCoreInstrumentation(options =>
-                        {
-                            options.RecordException = true;
-                            options.EnrichWithHttpRequest = (activity, request) =>
-                            {
-                                activity.SetTag("http.request.header.user-agent", request.Headers["User-Agent"].ToString());
-                            };
-                            options.EnrichWithHttpResponse = (activity, response) =>
-                            {
-                                activity.SetTag("http.response.status_code", response.StatusCode);
-                            };
-                        })
-                        .AddHttpClientInstrumentation()
-                        .SetSampler(new TraceIdRatioBasedSampler(1.0))
-                        .AddConsoleExporter();
+              .WithTracing(tracing =>
+              {
+                  tracing
+                     .AddSource(Assembly.GetExecutingAssembly().GetName().Name)
+                     .AddConsoleExporter()
+                     .AddHttpClientInstrumentation()
+                     .SetResourceBuilder(_resourceBuilder)
+                     .SetSampler(new TraceIdRatioBasedSampler(1.0))
+                     .AddAspNetCoreInstrumentation()
+                      .AddOtlpExporter(options =>
+                      {
+                          var section = configuration.GetSection("AppSettings:Otlp");
+                          section.Bind(options);
+                          options.Endpoint = Environment.GetEnvironmentVariable("OPEN_TELEMETRY_ENDPOINT") is null ? options.Endpoint : new Uri(Environment.GetEnvironmentVariable("OPEN_TELEMETRY_ENDPOINT"));
 
-                    // Add OTLP exporter if configured
-                    var otlpEndpoint = configuration["AppSettings:Otlp:Endpoint"];
-                    if (!string.IsNullOrEmpty(otlpEndpoint))
-                    {
-                        tracing.AddOtlpExporter(options =>
-                        {
-                            options.Endpoint = new Uri(otlpEndpoint);
-                        });
-                    }
-                });
+                      });
+              });
 
             return services;
         }
