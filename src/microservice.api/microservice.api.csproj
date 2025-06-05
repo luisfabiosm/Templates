@@ -186,7 +186,6 @@
     <Folder Include="Adapters\Inbound\WebApi\" />
     <Folder Include="Adapters\Outbound\Database\" />
     <Folder Include="Adapters\Outbound\Metrics\" />
-    <Folder Include="logs\" />
   </ItemGroup>
 
   <!-- Conditional Folders -->
