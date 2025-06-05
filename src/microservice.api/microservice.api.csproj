@@ -4,64 +4,223 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>553e1aa7-c5fa-4900-8c7a-0ab4e69488fe</UserSecretsId>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UserSecretsId>microservice-api-secrets</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <DefineConstants>SqlServerCondition PSQLCondition MongoDbCondition</DefineConstants>
-    <ServerGarbageCollection>false</ServerGarbageCollection>
-    <Version>1.0.1</Version>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Product>Clean Architecture Microservice API</Product>
+    <Description>Microservice template following Clean Architecture, Hexagonal (Ports &amp; Adapters), SOLID, DRY, KISS principles with performance optimizations</Description>
+    <Authors>Fabio Magalhaes</Authors>
+    <Company>Backside Development</Company>
+    <Copyright>Copyright © 2025 Backside Development</Copyright>
+
+    <!-- Performance and Build Optimizations -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredCompilationQuickJit>true</TieredCompilationQuickJit>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <EnableRequestDelegateGenerator>true</EnableRequestDelegateGenerator>
+    <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+
+    <!-- Build Performance -->
+    <UseSharedCompilation>true</UseSharedCompilation>
+    <BuildInParallel>true</BuildInParallel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors />
+    <WarningsNotAsErrors />
+
+    <!-- Conditional Compilation Symbols -->
+    <DefineConstants Condition="'$(DatabaseType)' == 'sqlserver'">$(DefineConstants);SqlServerCondition</DefineConstants>
+    <DefineConstants Condition="'$(DatabaseType)' == 'postgresql'">$(DefineConstants);PostgreSQLCondition</DefineConstants>
+    <DefineConstants Condition="'$(DatabaseType)' == 'mongodb'">$(DefineConstants);MongoDbCondition</DefineConstants>
+    <DefineConstants Condition="'$(UseKafka)' == 'false'">$(DefineConstants);KafkaCondition</DefineConstants>
+    <DefineConstants Condition="'$(UseRabbitMQ)' == 'false'">$(DefineConstants);RabbitMQCondition</DefineConstants>
+    <DefineConstants Condition="'$(UseRedis)' == 'true'">$(DefineConstants);RedisCondition</DefineConstants>
+    <DefineConstants Condition="'$(UseResultPattern)' == 'true'">$(DefineConstants);UseResultPattern</DefineConstants>
     <RootNamespace />
   </PropertyGroup>
 
+  <!-- Common Packages - Always Required -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1-Preview.1" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.15" />
-    <PackageReference Include="MongoDB.Driver" Version="3.3.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.11.1" />
-    <PackageReference Include="Polly.Contrib.WaitAndRetry" Version="1.1.1" />
-    <PackageReference Include="Serilog.Enrichers.Span" Version="3.1.0" />
-    <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.1" />
-    <PackageReference Include="Serilog.Settings.Configuration" Version="9.0.1-dev-02317" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
-
-
-    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.1-dev-00953" />
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0-dev-02301" />
-    <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0-dev-02302" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
-    <PackageReference Include="Polly" Version="8.5.2" />
-    <PackageReference Include="Dapper" Version="2.1.66" />
-
-    <!-- OpenTelemetry Packages -->
-    <PackageReference Include="OpenTelemetry" Version="1.11.2" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.11.2" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
-    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.6.3" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="System.Threading.Channels" Version="8.0.0" />
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
   </ItemGroup>
 
+  <!-- Authentication Packages -->
+  <ItemGroup Condition="'$(UseJwtAuth)' == 'true'">
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.0.3" />
+  </ItemGroup>
+
+  <!-- Swagger/OpenAPI Packages -->
+  <ItemGroup Condition="'$(UseSwagger)' == 'true'">
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Health Checks Packages -->
+  <ItemGroup Condition="'$(UseHealthChecks)' == 'true'">
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.0" Condition="'$(DatabaseType)' == 'sqlserver' Or '$(DatabaseType)' == 'postgresql'" />
+    <PackageReference Include="AspNetCore.HealthChecks.MongoDb" Version="7.0.0" Condition="'$(DatabaseType)' == 'mongodb'" />
+    <PackageReference Include="AspNetCore.HealthChecks.Kafka" Version="7.0.0" Condition="'$(UseKafka)' == 'true'" />
+    <PackageReference Include="AspNetCore.HealthChecks.RabbitMQ" Version="7.0.0" Condition="'$(UseRabbitMQ)' == 'true'" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="7.0.0" Condition="'$(UseRedis)' == 'true'" />
+  </ItemGroup>
+
+  <!-- Logging and Telemetry Packages -->
   <ItemGroup>
-    <Folder Include="Adapters\Outbound\Messaging\Kafka\" />
-    <Folder Include="Adapters\Outbound\Messaging\PubSub\" />
-    <Folder Include="Adapters\Outbound\Messaging\RabbitMQ\" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="2.3.0" />
+    <PackageReference Include="Serilog.Enrichers.Process" Version="2.0.2" />
+    <PackageReference Include="Serilog.Enrichers.Thread" Version="3.1.0" />
+  </ItemGroup>
+
+  <!-- OpenTelemetry Packages -->
+  <ItemGroup Condition="'$(UseMetrics)' == 'true'">
+    <PackageReference Include="OpenTelemetry" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.7.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.6.0-rc.1" />
+  </ItemGroup>
+
+  <!-- SQL Server Database Packages -->
+  <ItemGroup Condition="'$(DatabaseType)' == 'sqlserver'">
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.2" />
+    <PackageReference Include="Dapper" Version="2.1.24" />
+    <PackageReference Include="Polly" Version="8.2.0" />
+    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+  </ItemGroup>
+
+  <!-- PostgreSQL Database Packages -->
+  <ItemGroup Condition="'$(DatabaseType)' == 'postgresql'">
+    <PackageReference Include="Npgsql" Version="8.0.1" />
+    <PackageReference Include="Dapper" Version="2.1.24" />
+    <PackageReference Include="Polly" Version="8.2.0" />
+    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+  </ItemGroup>
+
+  <!-- MongoDB Database Packages -->
+  <ItemGroup Condition="'$(DatabaseType)' == 'mongodb'">
+    <PackageReference Include="MongoDB.Driver" Version="2.23.1" />
+    <PackageReference Include="MongoDB.Driver.Core" Version="2.23.1" />
+    <PackageReference Include="Polly" Version="8.2.0" />
+  </ItemGroup>
+
+  <!-- Redis Cache Packages -->
+  <ItemGroup Condition="'$(UseRedis)' == 'true'">
+    <PackageReference Include="StackExchange.Redis" Version="2.7.10" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Kafka Messaging Packages -->
+  <ItemGroup Condition="'$(UseKafka)' == 'true'">
+    <PackageReference Include="Confluent.Kafka" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- RabbitMQ Messaging Packages -->
+  <ItemGroup Condition="'$(UseRabbitMQ)' == 'true'">
+    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Performance and Memory Optimization Packages -->
+  <ItemGroup>
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+    <PackageReference Include="System.Buffers" Version="4.5.1" />
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.0" />
+    <PackageReference Include="System.Threading.Tasks.Dataflow" Version="8.0.0" />
+  </ItemGroup>
+
+  <!-- Docker Support -->
+  <ItemGroup Condition="'$(IncludeDockerSupport)' == 'true'">
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.5" />
+  </ItemGroup>
+
+  <!-- Analysis and Code Quality -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="9.16.0.82469" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Folder Structure -->
+  <ItemGroup>
+    <Folder Include="Domain\Core\Models\Entity\" />
+    <Folder Include="Domain\Core\Models\Dto\" />
+    <Folder Include="Domain\Core\Models\Responses\" />
     <Folder Include="Domain\Core\Interfaces\Inbound\" />
+    <Folder Include="Domain\Core\Base\" />
+    <Folder Include="Domain\Core\Exceptions\" />
+    <Folder Include="Domain\Core\Settings\" />
+    <Folder Include="Domain\UseCases\" />
+    <Folder Include="Domain\Services\" />
+    <Folder Include="Adapters\Inbound\WebApi\" />
+    <Folder Include="Adapters\Outbound\Database\" />
+    <Folder Include="Adapters\Outbound\Logging\" />
+    <Folder Include="Adapters\Outbound\Metrics\" />
+    <Folder Include="Configurations\" />
     <Folder Include="logs\" />
   </ItemGroup>
 
-
-  <ItemGroup Condition="'$(DatabaseType)' == 'MongoDbCondition'">
-    <PackageReference Include="MongoDB.Driver" Version="3.3.0" />
+  <!-- Conditional Folders -->
+  <ItemGroup Condition="'$(UseKafka)' == 'true'">
+    <Folder Include="Adapters\Outbound\Messaging\Kafka\" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(DatabaseType)' == 'SqlServerCondition'">
-    <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
+  <ItemGroup Condition="'$(UseRabbitMQ)' == 'true'">
+    <Folder Include="Adapters\Outbound\Messaging\RabbitMQ\" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(DatabaseType)' == 'PSQLCondition'">
-   <PackageReference Include="Npgsql" Version="9.0.3" />
+  <ItemGroup Condition="'$(UseRedis)' == 'true'">
+    <Folder Include="Adapters\Outbound\Cache\" />
   </ItemGroup>
+
+  <!-- Build Optimizations -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <DefineConstants>$(DefineConstants);RELEASE</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>false</Optimize>
+    <DebugType>portable</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Runtime Configuration -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.Server" Value="true" />
+    <RuntimeHostConfigurationOption Include="System.GC.Concurrent" Value="true" />
+    <RuntimeHostConfigurationOption Include="System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization" Value="false" />
+    <RuntimeHostConfigurationOption Include="System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault" Value="false" />
+  </ItemGroup>
+
 </Project>

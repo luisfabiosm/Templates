@@ -1,8 +1,5 @@
-﻿
-using Adapters.Inbound.WebApi.Extensions;
+﻿using Adapters.Inbound.Extensions;
 using Domain.Core.Settings;
-
-
 
 namespace Configurations
 {

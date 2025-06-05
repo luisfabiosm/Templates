@@ -1,12 +1,11 @@
-﻿
-using Domain.Core.Base;
-using Domain.Core.Settings;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
 using System.Data;
 using Dapper;
 using Domain.Core.Interfaces.Outbound;
+using Domain.Core.Settings;
+using Domain.Core.Base;
 
 #if SqlServerCondition
 

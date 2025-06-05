@@ -1,4 +1,4 @@
-﻿using Adapters.Inbound.WebApi.Extensions;
+﻿using Adapters.Inbound.Extensions;
 
 namespace Configurations
 {

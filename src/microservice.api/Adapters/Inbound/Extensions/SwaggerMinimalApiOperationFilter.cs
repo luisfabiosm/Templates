@@ -1,7 +1,7 @@
 ﻿using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
-namespace Adapters.Inbound.WebApi.Extensions
+namespace Adapters.Inbound.Extensions
 {
 
     public class SwaggerMinimalApiOperationFilter : IOperationFilter
@@ -9,8 +9,8 @@ namespace Adapters.Inbound.WebApi.Extensions
         public void Apply(OpenApiOperation operation, OperationFilterContext context)
         {
             var metadata = context.ApiDescription.ActionDescriptor.EndpointMetadata;
-            var httpMethodMetadata = metadata.FirstOrDefault(m => m is Microsoft.AspNetCore.Routing.HttpMethodMetadata)
-                as Microsoft.AspNetCore.Routing.HttpMethodMetadata;
+            var httpMethodMetadata = metadata.FirstOrDefault(m => m is HttpMethodMetadata)
+                as HttpMethodMetadata;
 
             if (httpMethodMetadata?.HttpMethods.Contains("GET") == true && operation.RequestBody == null)
             {

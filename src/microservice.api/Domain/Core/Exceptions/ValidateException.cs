@@ -16,19 +16,19 @@ namespace Domain.Core.Exceptions
         }
         public void AddDetails(ErrorDetails details)
         {
-            this.ErrorDetails.Add(details);
+            ErrorDetails.Add(details);
         }
 
         public ValidateException(string message)
             : base(message)
         {
-            this.ErrorDetails = new List<ErrorDetails>();
+            ErrorDetails = new List<ErrorDetails>();
         }
 
         public ValidateException(string message, int errorCode, object details)
            : base(message)
         {
-            this.ErrorCode = errorCode == -1 ? 400 : errorCode;
+            ErrorCode = errorCode == -1 ? 400 : errorCode;
             ErrorDetails = (List<ErrorDetails>)details;
         }
 

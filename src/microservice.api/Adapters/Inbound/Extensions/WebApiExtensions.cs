@@ -1,9 +1,9 @@
-﻿using Adapters.Inbound.WebApi.Middleware;
+﻿using Adapters.Inbound.Middleware;
 using Adapters.Inbound.WebApi.Sample.Endpoints;
 using Adapters.Inbound.WebApi.Sample.Mapping;
 using Microsoft.OpenApi.Models;
 
-namespace Adapters.Inbound.WebApi.Extensions
+namespace Adapters.Inbound.Extensions
 {
     public static class WebApiExtensions
     {

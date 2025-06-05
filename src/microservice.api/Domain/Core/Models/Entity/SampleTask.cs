@@ -22,9 +22,9 @@ namespace Domain.Core.Models.Entity
         {
 
             //this.Id = Guid.NewGuid();
-            this.Name = name;
-            this.TimerOnMiliseconds = timer;
-            this.IsTimer = istrigged;
+            Name = name;
+            TimerOnMiliseconds = timer;
+            IsTimer = istrigged;
 
         }
 

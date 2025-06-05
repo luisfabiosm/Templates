@@ -1,4 +1,5 @@
 ﻿using Domain.Core.Interfaces.Outbound;
+using microservice.api.Adapters.Outbound.Logging;
 using Serilog;
 using System.Diagnostics;
 

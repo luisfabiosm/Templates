@@ -1,4 +1,5 @@
 ﻿using Domain.Core.Base;
+using Domain.Core.Enums;
 using System;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -14,7 +15,7 @@ namespace Domain.Core.Exceptions
         public InternalException(string message)
             : base(message)
         {
-            ErrorDetails.Add(new BaseError(ErrorCode, message, Enums.EnumErrorType.System));
+            ErrorDetails.Add(new BaseError(ErrorCode, message, EnumErrorType.System));
             ErrorCode = -1;
         }
 
@@ -22,14 +23,14 @@ namespace Domain.Core.Exceptions
         public InternalException(string message, int errorCode, object details)
             : base(message)
         {
-            ErrorDetails.Add(new BaseError(errorCode, message, Enums.EnumErrorType.System));
+            ErrorDetails.Add(new BaseError(errorCode, message, EnumErrorType.System));
             ErrorCode = errorCode;
         }
 
         public InternalException(string message, int errorCode, Exception innerException)
             : base(message, innerException)
         {
-            ErrorDetails.Add(new BaseError(ErrorCode, message, Enums.EnumErrorType.System));
+            ErrorDetails.Add(new BaseError(ErrorCode, message, EnumErrorType.System));
             ErrorCode = errorCode;
         }
 

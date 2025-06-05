@@ -1,5 +1,4 @@
-﻿
-using Domain.Core.Enums;
+﻿using Domain.Core.Enums;
 
 namespace Domain.Core.Base
 {
@@ -14,7 +13,7 @@ namespace Domain.Core.Base
         public BaseError(int code, string mensagem, EnumErrorType type = EnumErrorType.System, string source = null)
         {
             this.code = code;
-            this.message = mensagem;
+            message = mensagem;
             this.source = source;
             this.type = type;
         }

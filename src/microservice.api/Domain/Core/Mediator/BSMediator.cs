@@ -1,6 +1,4 @@
-﻿
-
-namespace Domain.Core.Mediator
+﻿namespace Domain.Core.Mediator
 {
     public class BSMediator
     {

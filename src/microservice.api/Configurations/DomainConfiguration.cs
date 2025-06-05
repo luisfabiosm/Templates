@@ -1,6 +1,4 @@
-﻿
-
-using Domain.Core.Base;
+﻿using Domain.Core.Base;
 using Domain.Core.Interfaces.Domain;
 using Domain.Core.Mediator;
 using Domain.Core.Models.Responses;
@@ -12,7 +10,7 @@ using Domain.UseCases.Sample.UpdateSampleTaskTimer;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
-namespace Configurations 
+namespace Configurations
 {
     public static class DomainConfiguration
     {

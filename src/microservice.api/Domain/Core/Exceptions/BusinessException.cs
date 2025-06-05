@@ -1,4 +1,5 @@
 ﻿using Domain.Core.Base;
+using Domain.Core.Enums;
 using System;
 
 namespace Domain.Core.Exceptions
@@ -19,7 +20,7 @@ namespace Domain.Core.Exceptions
             : base(message)
         {
             ErrorCode = 400;
-            ErrorDetails.Add(new BaseError(ErrorCode, message, Enums.EnumErrorType.Business));
+            ErrorDetails.Add(new BaseError(ErrorCode, message, EnumErrorType.Business));
         }
 
 
@@ -27,7 +28,7 @@ namespace Domain.Core.Exceptions
             : base(message)
         {
             ErrorCode = errorCode;
-            ErrorDetails.Add(new BaseError(ErrorCode, message, Enums.EnumErrorType.Business));
+            ErrorDetails.Add(new BaseError(ErrorCode, message, EnumErrorType.Business));
         }
 
 
@@ -35,13 +36,13 @@ namespace Domain.Core.Exceptions
             : base(message)
         {
             ErrorCode = errorCode;
-            ErrorDetails.Add(new BaseError(ErrorCode, message, Enums.EnumErrorType.Business));
+            ErrorDetails.Add(new BaseError(ErrorCode, message, EnumErrorType.Business));
 
         }
 
         public void AddDetails(ErrorDetails details)
         {
-            this.ErrorDetails.Add(details);
+            ErrorDetails.Add(details);
         }
 
     }

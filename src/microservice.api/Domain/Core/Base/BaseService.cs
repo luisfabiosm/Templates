@@ -18,7 +18,7 @@ namespace Domain.Core.Base
         protected Exception HandleException(string methodName, Exception exception)
         {
             _loggingAdapter.LogError(methodName, exception);
-            return (IsKnownException(exception) ? exception : UnknownException(exception));
+            return IsKnownException(exception) ? exception : UnknownException(exception);
         }
 
         private static bool IsKnownException(Exception exception)

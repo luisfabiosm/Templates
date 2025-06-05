@@ -2,7 +2,7 @@
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
-namespace Adapters.Inbound.WebApi.Extensions
+namespace Adapters.Inbound.Extensions
 {
     public static class JWTAuthConfiguration
     {

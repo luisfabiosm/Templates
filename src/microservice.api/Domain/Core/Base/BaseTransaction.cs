@@ -1,6 +1,4 @@
-﻿
-
-using Domain.Core.Mediator;
+﻿using Domain.Core.Mediator;
 
 namespace Domain.Core.Base
 {

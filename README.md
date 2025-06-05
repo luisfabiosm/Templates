@@ -1,88 +1,238 @@
-# Microservice.API: Template .NET de Microserviço (Arquitetura Limpa/Hexagonal)
+# 🏗️ Clean Architecture Microservice Template
 
-## Propósito do Projeto
+Um template .NET avançado para criação de microserviços seguindo **Clean Architecture**, **Hexagonal Architecture (Ports & Adapters)**, princípios **SOLID**, **DRY**, **KISS** e **Object Calisthenics** com foco em **alta performance** e **baixo uso de memória**.
 
-Este projeto é um template .NET para iniciar novos microserviços seguindo os princípios de Clean Architecture (Arquitetura Limpa) e Hexagonal. Ele oferece uma estrutura básica com práticas recomendadas, facilitando a criação de APIs escaláveis, testáveis e fáceis de manter. O objetivo é permitir que desenvolvedores comecem rapidamente novos projetos de microserviço, já organizados conforme padrões de arquitetura limpa e adaptadores.
+## 🎯 Características Principais
 
-## Estrutura do Projeto
+### 🏛️ Arquitetura
+- **Clean Architecture** com separação clara de responsabilidades
+- **Hexagonal Architecture** (Ports & Adapters) para isolamento de dependências
+- **CQRS** com mediator pattern para separação de comandos e consultas
+- **Result Pattern** para tratamento de erros sem exceptions (melhor performance)
+- **Domain-Driven Design** com value objects e entidades ricas
 
-O template organiza o código em pastas principais de acordo com a arquitetura limpa e hexagonal. Entre os diretórios principais estão:
+### ⚡ Performance & Otimizações
+- **Pool de conexões** para bancos de dados
+- **Object pooling** para objetos caros de criar
+- **Async/await** otimizado para alta concorrência
+- **Memory-efficient** patterns e structs quando apropriado
+- **Server GC** habilitado para throughput máximo
+- **Compilation otimizada** com ReadyToRun e Trimming
+- **Response compression** (Gzip/Brotli)
 
-* **Domain/**: Contém as entidades de domínio, agregados, objetos de valor e interfaces que definem as regras de negócio centrais. Toda lógica de negócio pura fica concentrada aqui, sem dependências externas.
-* **Adapters/**: Inclui código de infraestrutura e comunicação externa, separando adaptadores de entrada (inbound) e saída (outbound):
+### 🛡️ Qualidade de Código
+- **Princípios SOLID** aplicados consistentemente
+- **Object Calisthenics** para código mais limpo
+- **DRY** (Don't Repeat Yourself) eliminando duplicação
+- **KISS** (Keep It Simple, Stupid) priorizando simplicidade
+- **Validação robusta** com validators dedicados
+- **Testes unitários** preparados
 
-  * **Adapters/Inbound/**: Contém adaptadores de entrada, como controladores da API ou definições de portas de entrada que recebem requisições e acoplam à lógica de domínio.
-  * **Adapters/Outbound/Database/SQL/** e **Adapters/Outbound/Database/NoSQL/**: Contêm implementações de repositórios para acesso a banco de dados. O diretório **SQL** inclui exemplos para SQL Server/PostgreSQL, enquanto **NoSQL** traz a implementação para MongoDB. Apenas a opção escolhida via `--database-type` será incluída no projeto final.
-  * **Adapters/Outbound/Messaging/Kafka/** e **Adapters/Outbound/Messaging/RabbitMQ/**: Contêm adaptadores de mensageria para Kafka e RabbitMQ, habilitados pelos parâmetros `--use-kafka` e `--use-rabbitmq`, respectivamente.
-  * **Adapters/Outbound/Metrics/**: Contém adaptadores para coleta de métricas (por exemplo, integração com Prometheus), habilitados pelo parâmetro `--use-metrics`.
-* **Microservice.API/** (projeto principal): Diretório raiz (por padrão `src/microservice.api`) que contém o ponto de entrada da aplicação (por exemplo, `Program.cs`), configurações iniciais e o arquivo de projeto (`.csproj`). Aqui ficam as configurações de inicialização, injeção de dependências e roteamento da API.
+### 🔧 Tecnologias Suportadas
 
-Essa estrutura modular facilita a manutenção, pois separa claramente a lógica de negócio (no domínio) das implementações externas (nos adaptadores).
+#### 💾 Bancos de Dados
+- **SQL Server** com otimizações de performance
+- **PostgreSQL** com driver Npgsql otimizado
+- **MongoDB** com padrões NoSQL
 
-## Parâmetros do Template (CLI)
+#### 📨 Mensageria
+- **Apache Kafka** com alta performance
+- **RabbitMQ** otimizado para throughput
 
-O template permite configuração via CLI do `dotnet new` usando os seguintes parâmetros:
+#### 🚀 Cache & Performance
+- **Redis** para cache distribuído
+- **In-memory cache** otimizado
+- **Response compression**
+- **Rate limiting** para proteção
 
-* `--database-type {none|mongodb|sqlserver|postgresql}` (ou `-db`): Define o tipo de banco de dados a ser usado. Opções disponíveis:
+#### 📊 Observabilidade
+- **OpenTelemetry** para tracing distribuído
+- **Prometheus metrics** para monitoramento
+- **Structured logging** com Serilog
+- **Health checks** detalhados
 
-  * `none`: sem persistência (apenas domínio em memória).
-  * `mongodb`: inclui adaptadores de MongoDB.
-  * `sqlserver`: inclui adaptadores para SQL Server.
-  * `postgresql`: inclui adaptadores para PostgreSQL.
-    O padrão é `sqlserver`.
-* `--use-kafka` (ou `-kafka`): Inclui o adaptador de mensageria Kafka no projeto. Se não for especificado, o projeto não terá integração com Kafka.
-* `--use-rabbitmq` (ou `-rabbitmq`): Inclui o adaptador de mensageria RabbitMQ no projeto. Se não for especificado, o projeto não terá integração com RabbitMQ.
-* `--use-metrics` (ou `-metrics`): Inclui adaptadores de métricas (por exemplo, Prometheus) no projeto. O padrão é habilitado (`true`); para desabilitar métricas, é possível passar `--use-metrics false`.
-* `--version <versão>` (ou `-v <versão>`): Define a versão do microserviço que será aplicada no arquivo do projeto (`.csproj`). O padrão é `1.0.0`.
-* `--no-restore`: Impede a restauração automática dos pacotes NuGet após a criação do projeto. Se usado, será necessário executar manualmente `dotnet restore` após gerar o projeto.
+## 🚀 Instalação e Uso
 
-Esses parâmetros permitem personalizar rapidamente o projeto inicial de acordo com as necessidades do microserviço.
+### 📋 Pré-requisitos
+- .NET 8.0 ou superior
+- Docker (opcional, para containerização)
 
-## Exemplos de Uso
-
-A seguir estão alguns exemplos de como usar o comando `dotnet new` com este template:
-
-* Criar um microserviço básico com valores padrão:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico
-  ```
-* Criar um microserviço sem banco de dados:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico --database-type none
-  ```
-* Criar um microserviço usando PostgreSQL como banco de dados:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico --database-type postgresql
-  ```
-* Criar um microserviço com adaptadores Kafka e RabbitMQ:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico --use-kafka --use-rabbitmq
-  ```
-* Criar um microserviço desabilitando métricas:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico --use-metrics false
-  ```
-* Criar um microserviço sem restauração automática de pacotes:
-
-  ```bash
-  dotnet new microservice.api -n MeuServico --no-restore
-  ```
-
-## Restauração de Pacotes
-
-Por padrão, ao criar o projeto com `dotnet new`, o template executa automaticamente `dotnet restore` para baixar as dependências. Caso o parâmetro `--no-restore` seja utilizado, essa restauração será pulada. Neste caso, após a geração do projeto você deve executar manualmente:
+### 🎯 Instalação do Template
 
 ```bash
-dotnet restore
+# Instalar o template
+dotnet new install ./
+
+# Verificar instalação
+dotnet new list | grep cleanarch
 ```
 
-Esse comando restaurará todos os pacotes NuGet necessários antes de compilar ou executar o projeto.
+### 🛠️ Criando um Microserviço
 
-## Autor
+#### Básico (SQL Server)
+```bash
+dotnet new cleanarch.api -n MeuMicroservico
+```
 
-Este template foi desenvolvido por **Fabio Magalhaes**.
+#### Com PostgreSQL
+```bash
+dotnet new cleanarch.api -n MeuMicroservico --database-type postgresql
+```
+
+#### Com MongoDB
+```bash
+dotnet new cleanarch.api -n MeuMicroservico --database-type mongodb
+```
+
+#### Com Mensageria (Kafka + RabbitMQ)
+```bash
+dotnet new cleanarch.api -n MeuMicroservico --use-kafka --use-rabbitmq
+```
+
+#### Com Redis Cache
+```bash
+dotnet new cleanarch.api -n MeuMicroservico --use-redis
+```
+
+#### Configuração Completa
+```bash
+dotnet new cleanarch.api -n MeuMicroservico \
+  --database-type postgresql \
+  --use-kafka \
+  --use-rabbitmq \
+  --use-redis \
+  --use-metrics \
+  --use-health-checks \
+  --include-docker-support \
+  --include-k8s-manifests
+```
+
+### 📋 Parâmetros Disponíveis
+
+| Parâmetro | Valores | Padrão | Descrição |
+|-----------|---------|--------|-----------|
+| `--database-type` | `none`, `sqlserver`, `postgresql`, `mongodb` | `sqlserver` | Tipo de banco de dados |
+| `--use-kafka` | `true`, `false` | `false` | Incluir Apache Kafka |
+| `--use-rabbitmq` | `true`, `false` | `false` | Incluir RabbitMQ |
+| `--use-redis` | `true`, `false` | `false` | Incluir Redis cache |
+| `--use-metrics` | `true`, `false` | `true` | Incluir métricas OpenTelemetry |
+| `--use-health-checks` | `true`, `false` | `true` | Incluir health checks |
+| `--use-swagger` | `true`, `false` | `true` | Incluir Swagger/OpenAPI |
+| `--use-jwt-auth` | `true`, `false` | `true` | Incluir autenticação JWT |
+| `--use-result-pattern` | `true`, `false` | `true` | Usar Result Pattern vs Exceptions |
+| `--include-docker-support` | `true`, `false` | `true` | Incluir Dockerfile otimizado |
+| `--include-k8s-manifests` | `true`, `false` | `false` | Incluir manifestos Kubernetes |
+| `--framework` | `net8.0`, `net9.0` | `net8.0` | Framework target |
+| `--version` | string | `1.0.0` | Versão inicial |
+
+## 🏗️ Estrutura do Projeto
+
+```
+📁 MeuMicroservico/
+├── 📁 src/
+│   └── 📁 microservice.api/
+│       ├── 📁 Domain/
+│       │   ├── 📁 Core/
+│       │   │   ├── 📁 Base/           # Classes base e interfaces fundamentais
+│       │   │   ├── 📁 Interfaces/    # Interfaces de domínio
+│       │   │   ├── 📁 Models/        # Entidades, VOs e DTOs
+│       │   │   ├── 📁 Mediator/      # Implementação do mediator
+│       │   │   └── 📁 Settings/      # Configurações de domínio
+│       │   ├── 📁 UseCases/          # Casos de uso da aplicação
+│       │   └── 📁 Services/          # Serviços de domínio
+│       ├── 📁 Adapters/
+│       │   ├── 📁 Inbound/           # Adaptadores de entrada
+│       │   │   ├── 📁 WebApi/        # Controllers e endpoints
+│       │   │   └── 📁 Middleware/    # Middlewares personalizados
+│       │   └── 📁 Outbound/          # Adaptadores de saída
+│       │       ├── 📁 Database/      # Repositórios SQL/NoSQL
+│       │       ├── 📁 Messaging/     # Kafka, RabbitMQ
+│       │       ├── 📁 Cache/         # Redis, Memory Cache
+│       │       ├── 📁 Logging/       # Logging estruturado
+│       │       └── 📁 Metrics/       # Coleta de métricas
+│       ├── 📁 Configurations/        # DI e configurações
+│       ├── 📄 Program.cs             # Entry point otimizado
+│       └── 📄 microservice.api.csproj
+├── 📁 k8s/                          # Manifestos Kubernetes (opcional)
+├── 📄 Dockerfile                     # Container otimizado
+├── 📄 docker-compose.yml            # Compose para desenvolvimento
+└── 📄 README.md
+```
+
+## 🎯 Princípios Implementados
+
+### 🏛️ SOLID
+- **S**ingle Responsibility: Cada classe tem uma única responsabilidade
+- **O**pen/Closed: Extensível sem modificação
+- **L**iskov Substitution: Substituição de tipos sem quebrar funcionalidade
+- **I**nterface Segregation: Interfaces específicas e focadas
+- **D**ependency Inversion: Dependência de abstrações, não implementações
+
+### 🎨 Object Calisthenics
+- ✅ Apenas um nível de indentação por método
+- ✅ Não usar palavra-chave `else`
+- ✅ Encapsular tipos primitivos em Value Objects
+- ✅ Coleções como objetos de primeira classe
+- ✅ Apenas um ponto por linha
+- ✅ Não abreviar nomes
+- ✅ Manter entidades pequenas
+- ✅ Máximo duas variáveis de instância por classe
+- ✅ Sem getters/setters desnecessários
+
+### 🎯 Clean Code
+- **DRY**: Eliminação de duplicação de código
+- **KISS**: Simplicidade sobre complexidade
+- **YAGNI**: Implementar apenas o necessário
+- **Nomes descritivos** e intenção clara
+- **Funções pequenas** e focadas
+- **Comentários apenas quando necessário**
+
+## 🚀 Performance Features
+
+### ⚡ Otimizações de Runtime
+- **Server GC** para máximo throughput
+- **Tiered Compilation** para startup rápido
+- **ReadyToRun** images para performance
+- **Assembly trimming** para containers menores
+
+### 💾 Gestão de Memória
+- **Object pooling** para objetos caros
+- **Struct** para value types pequenos
+- **Span<T>** e **Memory<T>** para manipulação eficiente
+- **ArrayPool** para arrays temporários
+
+### 🔄 Async/Await Otimizado
+- **ConfigureAwait(false)** consistente
+- **ValueTask** quando apropriado
+- **Cancellation tokens** em todos async methods
+- **Task.Run** apenas quando necessário
+
+### 🌐 HTTP & Networking
+- **Connection pooling** otimizado
+- **Keep-alive** configurado
+- **Compression** habilitada (Gzip/Brotli)
+- **Rate limiting** para proteção
+
+## 📊 Monitoramento e Observabilidade
+
+### 📈 Métricas
+- **Request duration** e **throughput**
+- **Memory usage** e **GC metrics**
+- **Database connection** metrics
+- **Custom business** metrics
+
+### 🔍 Logging
+- **Structured logging** com Serilog
+- **Correlation IDs** para rastreamento
+- **Log levels** otimizados por ambiente
+- **Performance logging** para requests lentos
+
+### 🩺 Health Checks
+- **Liveness** probes para Kubernetes
+- **Readiness** probes para load balancers
+- **Dependency** health checks (DB, Cache, etc.)
+- **Custom** health checks para business logic
+
+## 🐳 Docker & Kubernetes
+
+### 🐳
