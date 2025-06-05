@@ -1,4 +1,5 @@
-﻿using Domain.Core.Models.Entity;
+﻿using Domain.Core.Exceptions;
+using Domain.Core.Models.Entity;
 
 namespace Domain.Core.Models.Dto
 {
@@ -23,7 +24,7 @@ namespace Domain.Core.Models.Dto
             _istrigged = istrigged;
             _timer = timer;
 
-           
+            validateSampleDto();
 
         }
 
@@ -36,7 +37,23 @@ namespace Domain.Core.Models.Dto
  
 
 
-      
-       
+        public SampleTask MapSampleTask()
+        {
+            return new SampleTask(this.Name, this.IsTimerTrigged, this.TimerOnMilliseconds);
+        }
+ 
+
+        private void validateSampleDto()
+        {
+            BusinessException ex = new BusinessException();
+
+            if (string.IsNullOrEmpty(_name))
+                ex.AddDetails(new ErrorDetails("Uma Task precisa ter um nome definido"));
+
+            if ((_timer == 0) && (_istrigged == true))
+                ex.AddDetails(new ErrorDetails("Timer não pode ser 0"));
+
+            if (ex.ErrorDetails.Count > 0) throw ex;
+        }
     }
 }

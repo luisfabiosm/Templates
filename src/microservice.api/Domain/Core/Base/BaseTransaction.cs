@@ -1,29 +1,20 @@
-﻿using Domain.Core.Mediator;
-using Domain.Core.Models.Transaction;
+﻿
+
+using Domain.Core.Mediator;
 
 namespace Domain.Core.Base
 {
-    /// <summary>
-    /// Base transaction seguindo Object Calisthenics
-    /// - Máximo duas variáveis de instância
-    /// - Sem getters/setters desnecessários
-    /// - Nomes descritivos completos
-    /// </summary>
-    public abstract record BaseTransaction<TResponse> : IBSRequest<TResponse>, ITransaction
+    public abstract record BaseTransaction<TResponse> :  IBSRequest<TResponse>
     {
-        public TransactionCode Code { get; init; }
-        public CorrelationId CorrelationId { get; init; }
+        public int Code { get; init; }
 
-        protected BaseTransaction(int code)
+        public string CorrelationId { get; set; } = Guid.NewGuid().ToString();
+
+
+        public BaseTransaction()
         {
-            Code = new TransactionCode(code);
-            CorrelationId = new CorrelationId();
+            
         }
 
-        protected BaseTransaction(int code, string correlationId)
-        {
-            Code = new TransactionCode(code);
-            CorrelationId = new CorrelationId(correlationId);
-        }
     }
 }

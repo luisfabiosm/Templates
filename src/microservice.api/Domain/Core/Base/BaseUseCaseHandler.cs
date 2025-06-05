@@ -1,74 +1,200 @@
-﻿using Domain.Core.Interfaces.Outbound;
+﻿using Domain.Core.Exceptions;
+using Domain.Core.Interfaces.Outbound;
 using Domain.Core.Mediator;
-using Domain.Core.ResultPattern;
-using System.Threading;
-using System.Threading.Tasks;
+using Domain.Services;
+using System.ComponentModel.DataAnnotations;
 
 namespace Domain.Core.Base
 {
-    public abstract class BaseUseCaseHandler<TRequest, TResponse> : IBSRequestHandler<TRequest, TResponse>
-           where TRequest : IBSRequest<TResponse>
+    public abstract class BaseUseCaseHandler<TTransaction, TResponse, TResult> : BaseService, IBSRequestHandler<TTransaction, TResponse>
+        where TTransaction : BaseTransaction<TResponse>
+        where TResponse : class
     {
-        protected readonly ILoggingAdapter _logger;
-        protected readonly IValidator<TRequest> _validator;
+        protected readonly ValidatorService _validateService;
 
-        protected BaseUseCaseHandler(
-            ILoggingAdapter logger,
-            IValidator<TRequest> validator)
+        protected ValidateException _validateException;
+
+#if SqlServerCondition || PSQLCondition
+        protected readonly ISQLSampleRepository _sampleRepoSql;
+#elif MongoDbCondition
+        protected readonly INoSQLSampleRepository _sampleRepoNoSql;
+#endif
+
+        protected BaseUseCaseHandler(IServiceProvider serviceProvider) : base(serviceProvider)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+
+#if SqlServerCondition || PSQLCondition
+            _sampleRepoSql = serviceProvider.GetRequiredService<ISQLSampleRepository>();
+#elif MongoDbCondition
+            _sampleRepoNoSql = serviceProvider.GetRequiredService<INoSQLSampleRepository>();
+#endif
+            _validateService = serviceProvider.GetRequiredService<ValidatorService>();
         }
 
-        public async Task<TResponse> Handle(TRequest request, CancellationToken cancellationToken)
+
+        public async Task<TResponse> Handle(TTransaction transaction, CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-
-            var correlationId = GetCorrelationId(request);
-
-            using var operation = _logger.StartOperation(GetOperationName(), correlationId);
-
             try
             {
-                _logger.LogInformation("Iniciando processamento: {RequestType}", typeof(TRequest).Name);
 
-                var validationResult = await ValidateRequestAsync(request, cancellationToken);
-                if (validationResult.IsInvalid)
-                {
-                    return CreateValidationErrorResponse(validationResult, correlationId);
-                }
+                string correlationId = transaction.CorrelationId;
+                _loggingAdapter.LogInformation("Iniciando processamento: {RequestType}{CorrelationInfo}",
+                    typeof(TTransaction).Name,
+                    !string.IsNullOrEmpty(correlationId) ? $" [CorrelationId: {correlationId}]" : string.Empty);
 
-                var result = await ExecuteUseCaseAsync(request, cancellationToken);
+                // Pré-processamento (validações, etc)
+                await PreProcessing(transaction, cancellationToken);
 
-                _logger.LogInformation("Processamento concluído com sucesso: {RequestType}", typeof(TRequest).Name);
 
-                return result;
+                // Processamento principal
+                var _result = await Processing(transaction, cancellationToken);
+
+
+                // Pós-processamento (logs, cache, eventos, etc)
+                await PosProcessing(transaction, _result, cancellationToken);
+
+
+                // Logging de conclusão
+                _loggingAdapter.LogInformation("Processamento concluído com sucesso: {RequestType}{CorrelationInfo}",
+                    typeof(TTransaction).Name,
+                    !string.IsNullOrEmpty(correlationId) ? $" [CorrelationId: {correlationId}]" : string.Empty);
+
+                return _result;
+            }
+            catch (ValidateException vex)
+            {
+                return await HandleError("Handle", transaction, vex, cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Erro durante processamento: {RequestType} - {Error}", ex, ex.Message, ex);
-                return CreateErrorResponse(ex, correlationId);
+                return await HandleError("Handle", transaction, ex, cancellationToken);
             }
         }
 
-        protected abstract Task<TResponse> ExecuteUseCaseAsync(TRequest request, CancellationToken cancellationToken);
-        protected abstract TResponse CreateValidationErrorResponse(BSValidationResult validationResult, string correlationId);
-        protected abstract TResponse CreateErrorResponse(Exception exception, string correlationId);
 
-        protected virtual async Task<BSValidationResult> ValidateRequestAsync(TRequest request, CancellationToken cancellationToken)
+        protected virtual async Task PreProcessing(TTransaction transaction, CancellationToken cancellationToken)
         {
-            return await _validator.ValidateAsync(request, cancellationToken);
+            using var operationContext = _loggingAdapter.StartOperation("PreProcessing", transaction.CorrelationId);
+            _loggingAdapter.LogInformation("Iniciando PreProcessing");
+
+            await ValidateBeforeProcess(transaction, cancellationToken);
         }
 
-        protected virtual string GetOperationName() => GetType().Name;
 
-        protected virtual string GetCorrelationId(TRequest request)
+        protected async Task<TResponse> Processing(TTransaction transaction, CancellationToken cancellationToken)
         {
-            return request switch
+            using var operationContext = _loggingAdapter.StartOperation($"{GetType().Name} - Processing", transaction.CorrelationId);
+            _loggingAdapter.LogInformation($"{GetType().Name} Processing");
+
+            try
             {
-                ITransaction transaction => transaction.CorrelationId.Value,
-                _ => Guid.NewGuid().ToString()
-            };
+                //Executa o processamento especifico da Transação, é a logica de negócio
+                var result = await ExecuteTransactionProcessing(transaction, cancellationToken);
+
+                // Retornar um Response com sucesso
+                return ReturnSuccessResponse(result, "Transação executada com sucesso", transaction.CorrelationId);
+            }
+            catch (BusinessException)
+            {
+                throw;
+            }
+            catch (ValidateException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw new InternalException("Erro interno ao processar o request", 500, ex);
+            }
         }
+
+
+        protected abstract Task<TResult> ExecuteTransactionProcessing(TTransaction transaction, CancellationToken cancellationToken);
+
+
+        protected abstract TResponse ReturnSuccessResponse(TResult result, string message, string correlationId);
+
+
+        protected virtual async Task PosProcessing(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
+        {
+            using var operationContext = _loggingAdapter.StartOperation("PosProcessing", transaction.CorrelationId);
+            _loggingAdapter.LogInformation("Iniciando PosProcessing");
+
+            if (response is BaseReturn<TResponse> baseReturn && baseReturn.IsSuccess)
+            {
+                await HandleSuccessfulResponse(transaction, response, cancellationToken);
+            }
+        }
+
+
+        protected virtual Task HandleSuccessfulResponse(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
+        {
+            //Pode ser modificada na classe que herdar para manipular se necessario no retorno
+            return Task.CompletedTask;
+        }
+
+
+        protected virtual async Task ValidateBeforeProcess(TTransaction transaction, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _validateException = new ValidateException("Ocorreu uma falha na validação da transação");
+
+                if (transaction.Code <= 0)
+                    _validateException.AddDetails(new ErrorDetails("Code é obrigatório e não pode ser 0", "Code"));
+
+                if (string.IsNullOrEmpty(transaction.CorrelationId))
+                    _validateException.AddDetails(new ErrorDetails("CorrelationId é obrigatório", "CorrelationId"));
+
+                // Executar validações especificas
+                await ValidateTransaction(transaction, cancellationToken);
+
+                //_validateException = null;
+            }
+            catch (Exception ex) when (!(ex is ValidateException))
+            {
+                throw ex;
+            }
+        }
+
+
+        protected virtual Task ValidateTransaction(TTransaction transaction, CancellationToken cancellationToken)
+        {
+            //Pode ser modificada na classe que herdar para manipular se necessario no retorno
+            return Task.CompletedTask;
+        }
+
+
+        protected virtual async Task<TResponse> HandleError(string operation, TTransaction transaction, Exception exception, CancellationToken cancellationToken)
+        {
+            _loggingAdapter.LogError($"Erro em {operation}: {exception.Message}", exception);
+
+            Exception resultException = exception switch
+            {
+                BusinessException _ => exception,
+                InternalException _ => exception,
+                ValidateException _ => exception,
+                _ => new InternalException("Erro interno não esperado", 500, exception)
+            };
+
+            // Retornar response com tipode erro correto
+            return ReturnErrorResponse(resultException, transaction.CorrelationId);
+        }
+
+
+        protected abstract TResponse ReturnErrorResponse(Exception exception, string correlationId);
+
+
+    
+        protected virtual async Task<T> HandleProcessingResult<T>(T result, Exception exception = null)
+        {
+            if (exception is null)
+                return result;
+
+            _loggingAdapter.LogError("ERRO", exception);
+            throw exception;
+        }
+
     }
+
 }

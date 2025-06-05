@@ -1,13 +1,13 @@
 ﻿
 using MongoDB.Driver;
 using Polly;
+using Domain.Core.Base;
 using Microsoft.Extensions.Options;
 using Polly.Wrap;
 using System.Net.Sockets;
 using Adapters.Outbound.Logging;
-using Domain.Core.Interfaces.Outbound;
 using Domain.Core.Settings;
-using Domain.Core.Base;
+using Domain.Core.Interfaces.Outbound;
 
 namespace Adapters.Outbound.Database.NoSQL
 {
