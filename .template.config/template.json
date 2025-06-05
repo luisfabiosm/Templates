@@ -1,17 +1,24 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Fabio Magalhaes",
-  "classifications": ["Microservice", "Web", "API", "Hexagonal"],
-  "identity": "microservice.api",
-  "name": "Microservice API with Clean and Hexagonal Architecture v1",
-  "shortName": "microservice.api",
+  "classifications": ["Microservice", "Web", "API", "Clean Architecture", "Hexagonal", "Ports and Adapters"],
+  "identity": "microservice.cleanarch.api",
+  "name": "Clean Architecture Microservice API Template",
+  "shortName": "cleanarch.api",
   "sourceName": "microservice.api",
-  "guids": ["GUIDPLACEHOLDER1", "GUIDPLACEHOLDER2"],
+  "description": "Template para microserviços seguindo Clean Architecture, Hexagonal Architecture (Ports & Adapters), princípios SOLID, DRY, KISS e Object Calisthenics com foco em performance e baixo uso de memória.",
+  "groupIdentity": "CleanArch.Microservice.API",
+  "precedence": "9000",
   "tags": {
     "language": "C#",
     "type": "project"
   },
   "preferNameDirectory": true,
+  "guids": [
+    "GUIDPLACEHOLDER1",
+    "GUIDPLACEHOLDER2",
+    "GUIDPLACEHOLDER3"
+  ],
   "sources": [
     {
       "modifiers": [
@@ -23,7 +30,9 @@
             "**/.template.config/**/*",
             "**/*.filelist",
             "**/*.user",
-            "**/*.lock.json"
+            "**/*.lock.json",
+            "**/.vs/**",
+            "**/logs/**"
           ]
         }
       ]
@@ -33,69 +42,165 @@
     "skipRestore": {
       "type": "parameter",
       "datatype": "bool",
-      "description": "If specified, skips the automatic restore of the project on create.",
+      "description": "Se especificado, pula a restauração automática dos pacotes NuGet na criação do projeto.",
       "defaultValue": "false"
+    },
+    "Framework": {
+      "type": "parameter",
+      "description": "Target framework para o projeto",
+      "datatype": "choice",
+      "choices": [
+        {
+          "choice": "net8.0",
+          "description": ".NET 8.0"
+        },
+        {
+          "choice": "net9.0",
+          "description": ".NET 9.0"
+        }
+      ],
+      "replaces": "net8.0",
+      "defaultValue": "net8.0"
     },
     "Version": {
       "type": "parameter",
       "datatype": "string",
-      "defaultValue": "1.0.1",
-      "description": "The version of the microservice"
+      "defaultValue": "1.0.0",
+      "description": "Versão inicial do microserviço"
     },
     "DatabaseType": {
       "type": "parameter",
       "datatype": "choice",
       "choices": [
-        { "choice": "none", "description": "No database" },
-        { "choice": "mongodb", "description": "MongoDB database" },
-        { "choice": "sqlserver", "description": "SQL Server database" },
-        { "choice": "postgresql", "description": "PostgreSQL database" }
+        {
+          "choice": "none",
+          "description": "Sem persistência de dados"
+        },
+        {
+          "choice": "sqlserver",
+          "description": "SQL Server com otimizações de performance"
+        },
+        {
+          "choice": "postgresql",
+          "description": "PostgreSQL com otimizações de performance"
+        },
+        {
+          "choice": "mongodb",
+          "description": "MongoDB com padrões NoSQL otimizados"
+        }
       ],
       "defaultValue": "sqlserver",
-      "description": "The type of database to use"
+      "description": "Tipo de banco de dados para persistência"
     },
     "UseKafka": {
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
-      "description": "Include Kafka messaging adapter"
+      "description": "Incluir adaptador de mensageria Apache Kafka com alta performance"
     },
     "UseRabbitMQ": {
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "false",
-      "description": "Include RabbitMQ messaging adapter"
+      "description": "Incluir adaptador de mensageria RabbitMQ otimizado"
+    },
+    "UseRedis": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Incluir adaptador Redis para cache distribuído"
     },
     "UseMetrics": {
       "type": "parameter",
       "datatype": "bool",
       "defaultValue": "true",
-      "description": "Include metrics adapter"
+      "description": "Incluir coleta de métricas com OpenTelemetry e Prometheus"
+    },
+    "UseHealthChecks": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Incluir health checks detalhados para monitoramento"
+    },
+    "UseSwagger": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Incluir documentação Swagger/OpenAPI"
+    },
+    "UseJwtAuth": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Incluir autenticação JWT otimizada"
+    },
+    "UseResultPattern": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Usar Result Pattern ao invés de exceptions para melhor performance"
+    },
+    "UseAsyncPatterns": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Implementar padrões assíncronos otimizados para alta concorrência"
+    },
+    "IncludeDockerSupport": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "true",
+      "description": "Incluir arquivos Docker otimizados para produção"
+    },
+    "IncludeK8sManifests": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Incluir manifestos Kubernetes básicos"
     },
     "SqlServerCondition": {
       "type": "computed",
-      "value": "(DatabaseType == \"sqlserver\")",
-      "fileRename": "SqlServerCondition"
+      "value": "(DatabaseType == \"sqlserver\")"
     },
-    "PSQLCondition": {
+    "PostgreSQLCondition": {
       "type": "computed",
-      "value": "(DatabaseType == \"postgresql\")",
-      "fileRename": "PSQLCondition"
+      "value": "(DatabaseType == \"postgresql\")"
+    },
+    "MongoDbCondition": {
+      "type": "computed",
+      "value": "(DatabaseType == \"mongodb\")"
     },
     "NoDatabaseCondition": {
       "type": "computed",
-      "value": "(DatabaseType == \"none\")",
-      "fileRename": "NoDatabaseCondition"
+      "value": "(DatabaseType == \"none\")"
+    },
+    "SqlDatabaseCondition": {
+      "type": "computed",
+      "value": "(DatabaseType == \"sqlserver\" || DatabaseType == \"postgresql\")"
     },
     "KafkaCondition": {
       "type": "computed",
-      "value": "(UseKafka == \"true\")",
-      "fileRename": "UseKafka"
+      "value": "(UseKafka)"
     },
     "RabbitMQCondition": {
       "type": "computed",
-      "value": "(UseRabbitMQ == \"true\")",
-      "fileRename": "UseRabbitMQ"
+      "value": "(UseRabbitMQ)"
+    },
+    "RedisCondition": {
+      "type": "computed",
+      "value": "(UseRedis)"
+    },
+    "MessagingCondition": {
+      "type": "computed",
+      "value": "(UseKafka || UseRabbitMQ)"
+    },
+    "CachingCondition": {
+      "type": "computed",
+      "value": "(UseRedis)"
+    },
+    "ObservabilityCondition": {
+      "type": "computed",
+      "value": "(UseMetrics || UseHealthChecks)"
     }
   },
   "sources": [
@@ -104,81 +209,131 @@
       "target": "./",
       "modifiers": [
         {
-          "condition": "(DatabaseType == \"none\" || DatabaseType == \"\")",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Database/NoSQL/**/*", "src/microservice.api/Adapters/Outbound/Database/SQL/**/*"]
+          "condition": "(NoDatabaseCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Database/**",
+            "src/**/Domain/Core/Interfaces/Outbound/I*Repository.cs",
+            "src/**/Domain/Core/Interfaces/Outbound/I*ConnectionAdapter.cs"
+          ]
         },
         {
-          "condition": "(DatabaseType == \"mongodb\")",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Database/SQL/**/*"]
+          "condition": "(MongoDbCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Database/SQL/**"
+          ]
         },
         {
-          "condition": "(DatabaseType == \"sqlserver\" || DatabaseType == \"postgresql\")",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Database/NoSQL/**/*"]
+          "condition": "(SqlDatabaseCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Database/NoSQL/**"
+          ]
         },
         {
-          "condition": "(!UseKafka)",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Messaging/Kafka/**/*"]
+          "condition": "(!KafkaCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Messaging/Kafka/**"
+          ]
         },
         {
-          "condition": "(!UseRabbitMQ)",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Messaging/RabbitMQ/**/*"]
+          "condition": "(!RabbitMQCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Messaging/RabbitMQ/**"
+          ]
+        },
+        {
+          "condition": "(!RedisCondition)",
+          "exclude": [
+            "src/**/Adapters/Outbound/Cache/**"
+          ]
         },
         {
           "condition": "(!UseMetrics)",
-          "exclude": ["src/microservice.api/Adapters/Outbound/Metrics/**/*"]
+          "exclude": [
+            "src/**/Adapters/Outbound/Metrics/**"
+          ]
+        },
+        {
+          "condition": "(!UseHealthChecks)",
+          "exclude": [
+            "src/**/Adapters/Inbound/HealthChecks/**"
+          ]
+        },
+        {
+          "condition": "(!UseSwagger)",
+          "exclude": [
+            "src/**/Extensions/SwaggerExtensions.cs"
+          ]
+        },
+        {
+          "condition": "(!UseJwtAuth)",
+          "exclude": [
+            "src/**/Extensions/JWTAuthConfiguration.cs",
+            "src/**/Middleware/AuthenticationMiddleware.cs"
+          ]
+        },
+        {
+          "condition": "(!IncludeDockerSupport)",
+          "exclude": [
+            "Dockerfile",
+            ".dockerignore",
+            "docker-compose.yml",
+            "docker-compose.override.yml"
+          ]
+        },
+        {
+          "condition": "(!IncludeK8sManifests)",
+          "exclude": [
+            "k8s/**"
+          ]
         }
       ]
     }
   ],
+  "forms": {
+    "safe_name": {
+      "identifier": "replace",
+      "pattern": "(?<=namespace\\s+)[^\\s;]+",
+      "replacement": "sourceName"
+    }
+  },
   "postActions": [
     {
-      "description": "Create solution file",
+      "description": "Restore NuGet packages",
       "manualInstructions": [
-        { "text": "Run 'dotnet new sln'" }
-      ],
-      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
-      "args": {
-        "executable": "dotnet",
-        "args": "new sln"
-      },
-      "continueOnError": true
-    },
-	{
-      "description": "Add project to solution",
-      "manualInstructions": [
-        { "text": "Run 'dotnet sln add src/{PROJECT_NAME}/{PROJECT_NAME}.csproj'" }
-      ],
-      "actionId": "AC1156F7-BB77-4DB8-B28F-24EEBCCA1E5C",
-      "args": {
-        "executable": "dotnet",
-        "args": "sln add src/microservice.api/microservice.api.csproj"
-      },
-      "continueOnError": true
-    },
-    {
-      "condition": "(!skipRestore)",
-      "description": "Restore NuGet packages required by this project.",
-      "manualInstructions": [
-        { "text": "Run 'dotnet restore'" }
+        {
+          "text": "Execute 'dotnet restore' para restaurar os pacotes NuGet"
+        }
       ],
       "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
       "continueOnError": true,
+      "condition": "(!skipRestore)"
+    },
+    {
+      "description": "Build solution",
+      "manualInstructions": [
+        {
+          "text": "Execute 'dotnet build' para compilar a solução"
+        }
+      ],
+      "actionId": "3A7C4B45-1F5D-4A30-960B-2576618C4E92",
+      "continueOnError": true,
+      "condition": "(!skipRestore)",
       "args": {
-        "projectPath": "src/microservice.api/microservice.api.csproj"
+        "executable": "dotnet",
+        "args": "build --no-restore --verbosity minimal"
       }
     }
   ],
   "primaryOutputs": [
     {
       "path": "src/microservice.api/microservice.api.csproj"
+    },
+    {
+      "path": "microservice.api.sln"
     }
   ],
-  "special": {
-    "csproj": {
-      "PropertyGroup": {
-        "Version": "{{Version}}",
-        "DefineConstants": "$([System.String]::Join(' ',$([System.String]::new('TRACE DEBUG').Split(' '))$(if ($([System.String]::Equals('$(DatabaseType)', 'mongodb'))),' MongoDbCondition')$(if ($([System.String]::Equals('$(DatabaseType)', 'sqlserver'))),' SqlServerCondition')$(if ($([System.String]::Equals('$(DatabaseType)', 'postgresql'))),' PSQLCondition'))"
-      }
-    }
+  "defaultName": "CleanArchMicroservice",
+  "constraints": {
+    "sdk-version": "[8.0.0,)"
   }
 }

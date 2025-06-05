@@ -1,11 +1,9 @@
-﻿
-
-using Domain.Core.Base;
+﻿using Domain.Core.Base;
 using Domain.Core.Exceptions;
 using System.Net;
 using System.Text.Json;
 
-namespace Adapters.Inbound.WebApi.Middleware
+namespace Adapters.Inbound.Middleware
 {
     public class HttpHandlingMiddleware
     {
