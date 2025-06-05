@@ -44,6 +44,7 @@
     <DefineConstants Condition="'$(UseRabbitMQ)' == 'false'">$(DefineConstants);RabbitMQCondition</DefineConstants>
     <DefineConstants Condition="'$(UseRedis)' == 'true'">$(DefineConstants);RedisCondition</DefineConstants>
     <DefineConstants Condition="'$(UseResultPattern)' == 'true'">$(DefineConstants);UseResultPattern</DefineConstants>
+    <DefineConstants Condition="'$(UseMetrics)' == 'true'">$(DefineConstants);UseMetrics</DefineConstants>
     <RootNamespace />
   </PropertyGroup>
 
@@ -57,6 +58,12 @@
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
     <PackageReference Include="System.Threading.Channels" Version="8.0.0" />
     <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
+    <PackageReference Include="OpenTelemetry" Version="1.11.2" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
+    <PackageReference Include="Polly" Version="8.2.0" />
+    <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+    <PackageReference Include="Dapper" Version="2.1.24" />
+
   </ItemGroup>
 
   <!-- Authentication Packages -->
@@ -95,24 +102,24 @@
   </ItemGroup>
 
   <!-- OpenTelemetry Packages -->
-  <ItemGroup Condition="'$(UseMetrics)' == 'true'">
-    <PackageReference Include="OpenTelemetry" Version="1.7.0" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.7.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.7.1" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.7.1" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.7.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.7.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.11.1" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.11.2" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
     <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.6.0-rc.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+
   </ItemGroup>
 
   <!-- SQL Server Database Packages -->
   <ItemGroup Condition="'$(DatabaseType)' == 'sqlserver'">
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.2" />
-    <PackageReference Include="Dapper" Version="2.1.24" />
     <PackageReference Include="Polly" Version="8.2.0" />
     <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
+
   </ItemGroup>
 
   <!-- PostgreSQL Database Packages -->
@@ -174,16 +181,11 @@
     <Folder Include="Domain\Core\Models\Dto\" />
     <Folder Include="Domain\Core\Models\Responses\" />
     <Folder Include="Domain\Core\Interfaces\Inbound\" />
-    <Folder Include="Domain\Core\Base\" />
-    <Folder Include="Domain\Core\Exceptions\" />
     <Folder Include="Domain\Core\Settings\" />
-    <Folder Include="Domain\UseCases\" />
     <Folder Include="Domain\Services\" />
     <Folder Include="Adapters\Inbound\WebApi\" />
     <Folder Include="Adapters\Outbound\Database\" />
-    <Folder Include="Adapters\Outbound\Logging\" />
     <Folder Include="Adapters\Outbound\Metrics\" />
-    <Folder Include="Configurations\" />
     <Folder Include="logs\" />
   </ItemGroup>
 

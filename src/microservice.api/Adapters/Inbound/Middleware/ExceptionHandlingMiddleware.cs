@@ -1,5 +1,5 @@
-﻿using Domain.Core.Base;
-using Domain.Core.Interfaces.Outbound;
+﻿using Domain.Core.Interfaces.Outbound;
+using Domain.Core.ResultPattern;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
