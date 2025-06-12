@@ -1,4 +1,4 @@
-﻿using Domain.Core.Interfaces.Outbound;
+﻿using Domain.Core.Ports.Outbound;
 using System.Diagnostics;
 
 namespace Adapters.Outbound.Logging

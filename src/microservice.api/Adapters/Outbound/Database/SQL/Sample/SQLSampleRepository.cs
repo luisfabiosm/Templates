@@ -1,9 +1,9 @@
 ﻿using Dapper;
 using Domain.Core.Base;
 using Domain.Core.Exceptions;
-using Domain.Core.Interfaces.Outbound;
 using Domain.Core.Models.Dto;
 using Domain.Core.Models.Entity;
+using Domain.Core.Ports.Outbound;
 using Domain.UseCases.Sample.AddSampleTask;
 using Domain.UseCases.Sample.GetSampleTask;
 using Domain.UseCases.Sample.ListSampleTask;
@@ -16,7 +16,6 @@ namespace Adapters.Outbound.Database.SQL.Sample
 {
     public class SQLSampleRepository : BaseSQLRepository, ISQLSampleRepository
     {
-
         public SQLSampleRepository(IServiceProvider serviceProvider) : base(serviceProvider)
         {
 
@@ -26,139 +25,121 @@ namespace Adapters.Outbound.Database.SQL.Sample
         #region SampleTaskToDo
 
 
-
-        public async ValueTask<(SampleTask, Exception exception)> AddSampleTaskAsync(TransactionAddSampleTask transaction)
+        public async ValueTask<SampleTask> AddSampleTaskAsync(TransactionAddSampleTask transaction)
         {
-            try
+
+            using var operationContext = StartOperation("AddSampleTaskAsync", transaction.CorrelationId);
+
+            var sampleTask = transaction.getSampleTaskDto().MapSampleTask();
+
+            AddTraceProperty("EntityId", sampleTask.Id.ToString());
+            AddTraceProperty("EntityName", sampleTask.Name);
+
+            // 3. Registra métrica
+            RecordRequest("Repository.Add");
+
+            await _dbConnectionAdapter.ExecuteWithRetryAsync(async (_connection) =>
             {
-                using var operationContext = _loggingAdapter.StartOperation("AddSampleTaskAsync", transaction.CorrelationId);
+                var _parameters = new DynamicParameters();
 
-                var sampleTask = transaction.getSampleTaskDto().MapSampleTask();
+                //INPUT
+                _parameters.Add("@pName", sampleTask.Name);
+                _parameters.Add("@pIntervalSeconds", sampleTask.TimerOnMiliseconds);
+                _parameters.Add("@pIsEnabled", sampleTask.IsTimer);
 
-                _loggingAdapter.AddProperty("Name", sampleTask.Name);
-
-                await _dbConnection.ExecuteWithRetryAsync(async (_connection) =>
-                {
-                    var _parameters = new DynamicParameters();
-
-                    //INPUT
-                    _parameters.Add("@pName", sampleTask.Name);
-                    _parameters.Add("@pIntervalSeconds", sampleTask.TimerOnMiliseconds);
-                    _parameters.Add("@pIsEnabled", sampleTask.IsTimer);
-
-                    //OUTPUT
-                    _parameters.Add("@pId", 0, DbType.Int32, ParameterDirection.InputOutput);
+                //OUTPUT
+                _parameters.Add("@pId", 0, DbType.Int32, ParameterDirection.InputOutput);
 
 
-                    await _connection.ExecuteAsync("spx_AddSampleTask", _parameters,
-                            commandTimeout: _dbsettings.Value.CommandTimeout,
-                            commandType: CommandType.StoredProcedure);
+                await _connection.ExecuteAsync("spx_AddSampleTask", _parameters,
+                        commandTimeout: _dbsettings.Value.CommandTimeout,
+                        commandType: CommandType.StoredProcedure);
 
-                    //OUTPUT
-                    sampleTask.Id = _parameters.Get<int>("@pId");
-                });
+                //OUTPUT
+                sampleTask.Id = _parameters.Get<int>("@pId");
+              
+            });
 
-                return sampleTask.Id != 0 ? (sampleTask, null) : (null, new InternalException("Erro ao adicionar nova configuração de  HealthCheck"));
+            LogInformation("Entidade adicionada com sucesso: {EntityId}", sampleTask.Id);
 
-            }
-            catch (Exception ex)
-            {
-                return (null, HandleException("AddSampleTaskAsync", ex));
-            }
+            return sampleTask;
+
         }
 
 
-        public async ValueTask<(SampleTask, Exception exception)> GetSampleTaskByIdAsync(TransactionGetSampleTask transaction)
+        public async ValueTask<SampleTask> GetSampleTaskByIdAsync(TransactionGetSampleTask transaction)
         {
-            try
+
+            using var operationContext = StartOperation("GetSampleTaskByIdAsync", transaction.CorrelationId);
+
+            AddTraceProperty("Id", transaction.Id.ToString());
+
+            var _sampleTask = await _dbConnectionAdapter.ExecuteWithRetryAsync(async (connection) =>
             {
-                using var operationContext = _loggingAdapter.StartOperation("GetSampleTaskByIdAsync", transaction.CorrelationId);
-
-                _loggingAdapter.AddProperty("Id", transaction.Id.ToString());
-
-                var _sampleTask = await _dbConnection.ExecuteWithRetryAsync(async (connection) =>
+                var query = @"SELECT * FROM Tasks WITH (NOLOCK) WHERE ID = @ID ";
+                var queryArgs = new
                 {
-                    var query = @"SELECT * FROM Tasks WHERE ID = @ID ";
-                    var queryArgs = new
-                    {
-                        ID = transaction.Id
-                    };
-                    return await connection.QueryFirstOrDefaultAsync<SampleTask>(query, queryArgs);
-                });
+                    ID = transaction.Id
+                };
+                return await connection.QueryFirstOrDefaultAsync<SampleTask>(query, queryArgs);
+            });
 
-                return _sampleTask is null ? (null, new InternalException("Task inexistente")) : (_sampleTask, null);
+            LogInformation("Entidade recuperada com sucesso: {EntityId}", _sampleTask.Id);
+      
+            return _sampleTask;
 
-            }
-            catch (Exception ex)
-            {
-                return (null, HandleException("GetSampleTaskByIdAsync", ex));
-            }
-        
         }
 
 
-        public async ValueTask<(List<SampleTask>, Exception exception)> ListAllSampleTaskAsync(TransactionListSampleTask transaction)
+        public async ValueTask<List<SampleTask>> ListAllSampleTaskAsync(TransactionListSampleTask transaction)
         {
-            try
+
+            using var operationContext = StartOperation("ListAllSampleTaskAsync", transaction.CorrelationId);
+
+            var _listSample = await _dbConnectionAdapter.ExecuteWithRetryAsync(async (_connection) =>
             {
-                using var operationContext = _loggingAdapter.StartOperation("ListAllSampleTaskAsync", transaction.CorrelationId);
+                var query = @"SELECT * FROM Tasks WITH (NOLOCK) ORDER BY Id DESC";
 
-                var _listSample =  await _dbConnection.ExecuteWithRetryAsync(async (_connection) =>
-                {
-                    var query = @"SELECT * FROM Tasks";
+                return (await _connection.QueryAsync<SampleTask>(query)).ToList();
+            });
 
-                    //var queryArgs = new
-                    //{
-                    //    ID = 1
-                    //};
+            return _listSample;
 
-                    return( await _connection.QueryAsync<SampleTask>(query)).ToList();
-                });
-
-                return _listSample is null ? (null, new BusinessException("Task inexistente")):(_listSample,null);
-            }
-            catch (Exception ex)
-            {
-               return (null, HandleException("ListAllSampleTaskAsync", ex));
-            }
         }
 
 
-        public async ValueTask<(bool,Exception exception)> UpdateSampleTaskTimerAsync(TransactionUpdateSampleTaskTimer transaction)
+        public async ValueTask<bool> UpdateSampleTaskTimerAsync(TransactionUpdateSampleTaskTimer transaction)
         {
-            try
+
+            var sampleTask = transaction.getSampleTaskDto().MapSampleTask();
+
+            using var operationContext = StartOperation("UpdateSampleTaskTimerAsync", transaction.CorrelationId);
+
+            AddTraceProperty("Id", sampleTask.Id.ToString());
+            AddTraceProperty("Timer", sampleTask.TimerOnMiliseconds.ToString());
+
+            var _result = await _dbConnectionAdapter.ExecuteWithRetryAsync(async (_connection) =>
             {
-
-                var sampleTask = transaction.getSampleTaskDto().MapSampleTask();
-
-                using var operationContext = _loggingAdapter.StartOperation("UpdateSampleTaskTimerAsync", transaction.CorrelationId);
-
-                _loggingAdapter.AddProperty("Id", sampleTask.Id.ToString());
-                _loggingAdapter.AddProperty("Timer", sampleTask.TimerOnMiliseconds.ToString());
-
-                var _result = await _dbConnection.ExecuteWithRetryAsync(async (_connection) =>
-                {
-                    var query = @"UPDATE Tasks SET TimerOnMiliseconds = @IntervalSeconds,  IsEnabled = @IsEnabled WHERE Id = @Id
+                var query = @"UPDATE Tasks SET TimerOnMiliseconds = @IntervalSeconds,  IsEnabled = @IsEnabled WHERE Id = @Id
 
                                 SELECT COUNT(*) FROM Tasks WHERE Id = @Id;";
 
 
-                    var updateParams = new DynamicParameters();
-                    updateParams.Add("@IntervalSeconds", sampleTask.TimerOnMiliseconds, DbType.Int32);
-                    updateParams.Add("@IsEnabled", sampleTask.IsTimer, DbType.Boolean);
-                    updateParams.Add("@Id", sampleTask.Id, DbType.Int32);
+                var updateParams = new DynamicParameters();
+                updateParams.Add("@IntervalSeconds", sampleTask.TimerOnMiliseconds, DbType.Int32);
+                updateParams.Add("@IsEnabled", sampleTask.IsTimer, DbType.Boolean);
+                updateParams.Add("@Id", sampleTask.Id, DbType.Int32);
 
-                    int _iret = await _connection.ExecuteScalarAsync<int>(query, updateParams);
+                int _iret = await _connection.ExecuteScalarAsync<int>(query, updateParams);
 
-                    return _iret == 0 ? false : true;
-                });
+                return _iret == 0 ? false : true;
+            });
 
-                return (_result, null);
-            }
-            catch (Exception ex)
-            {
-                return (false, HandleException("RegistrarCreditoOrdemPagamento", ex));
-            }
+
+            LogInformation("Entidade atualizada com sucesso: {EntityId}", sampleTask.Id);
+
+            return _result;
+
 
         }
 

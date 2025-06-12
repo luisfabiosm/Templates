@@ -5,8 +5,11 @@ using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
 using System.Data;
+using System.Data.Common;
 using Dapper;
-using Domain.Core.Interfaces.Outbound;
+using Domain.Core.Ports.Outbound;
+using System.Threading;
+
 
 #if SqlServerCondition
 
@@ -25,271 +28,273 @@ using DbException = Npgsql.NpgsqlException;
 
 namespace Adapters.Outbound.Database.SQL
 {
-    public class SQLConnectionAdapter : BaseService, ISQLConnectionAdapter, IAsyncDisposable
+    public class SQLConnectionAdapter : BaseService, ISQLConnectionAdapter, IDisposable
     {
         private readonly IOptions<DBSettings> _settings;
         private readonly AsyncRetryPolicy<IDbConnection> _retryPolicy;
-        private DbConnection _connection;
-        private readonly SemaphoreSlim _semaphore;
-        private const int MaxRetries = 3;
-        private string _CorrelationId;
+        private readonly SemaphoreSlim _connectionSemaphore;
+        private readonly object _lockObject = new();
 
+        private const int MaxRetries = 3;
+        private const int BaseDelayMs = 500;
+
+        private volatile bool _disposed;
+        private DbConnection? _connection;
+        private string _correlationId = string.Empty;
 
         public SQLConnectionAdapter(IServiceProvider serviceProvider) : base (serviceProvider)
         {
             _settings = serviceProvider.GetRequiredService<IOptions<DBSettings>>();
             _retryPolicy = CreateRetryPolicy();
-            _semaphore = new SemaphoreSlim(1, 1);
+            _connectionSemaphore = new SemaphoreSlim(1, 1);
         }
-
 
         public void SetCorrelationId(string correlationId)
         {
-            _CorrelationId = correlationId;
-        }
-
-        public string GetServer() => _settings.Value?.ServerUrl ?? throw new InvalidOperationException("Server não configurado");
-
-        public async Task CloseConnectionAsync()
-        {
-            _loggingAdapter.LogInformation("Fechando conexão", _connection);
-
-            if (_connection == null)
-            {
-                return;
-            }
-
-            await _semaphore.WaitAsync();
-            try
-            {
-                var connection = _connection;
-
-                if (connection != null)
-                {
-
-                    if (connection.State != ConnectionState.Closed)
-                    {
-                        await connection.CloseAsync();
-                    }
-
-                    await connection.DisposeAsync();
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                // Ignore if connection is already disposed
-
-            }
-            finally
-            {
-                _connection = null;
-                _semaphore.Release();
-            }
+            _correlationId = correlationId ?? string.Empty;
         }
 
         public async Task<IDbConnection> GetConnectionAsync(CancellationToken cancellationToken = default)
         {
-            await _semaphore.WaitAsync(cancellationToken);
+            ThrowIfDisposed();
+
+            await _connectionSemaphore.WaitAsync(cancellationToken);
             try
             {
                 return await _retryPolicy.ExecuteAsync(async () =>
                 {
-                    if (_connection == null || _connection.State != ConnectionState.Open)
+                    if (ShouldCreateNewConnection())
                     {
-                        await EnsureConnectionClosedAsync();
-                        var _connectionString = _settings.Value.GetConnectionString();
-
-                        if (string.IsNullOrEmpty(_connectionString))
-                        {
-                            var ex = new InvalidOperationException("Connectionstring não configurada");
-                            throw ex;
-                        }
-
-                        var _newConnection = new SqlConnection(_connectionString);
-                        _loggingAdapter.LogInformation("Nova conexão", _newConnection);
-                        try
-                        {
-                            await _newConnection.OpenAsync(cancellationToken);
-                            _connection = _newConnection;
-                            _loggingAdapter.LogDebug("Database connection opened successfully");
-                        }
-                        catch (Exception ex)
-                        {
-                            _loggingAdapter.LogError("GetConnectionAsync: OpenAsync ", ex);
-                            await EnsureConnectionClosedAsync();
-                            throw;
-                        }
+                        await CloseCurrentConnectionSafelyAsync();
+                        await CreateNewConnectionAsync(cancellationToken);
                     }
 
-                    return _connection;
+                    return _connection!;
                 });
             }
             finally
             {
-                _semaphore.Release();
+                _connectionSemaphore.Release();
             }
         }
 
-        public async Task ExecuteWithRetryAsync(Func<IDbConnection, Task> operation, CancellationToken cancellationToken = default)
+
+        public async Task CloseConnectionAsync()
         {
-            await ExecuteWithRetryAsync<object>(async (connection) =>
+            if (_disposed) return;
+
+            await _connectionSemaphore.WaitAsync();
+            try
             {
-                await operation(connection);
-                return null;
-            }, cancellationToken);
+                await CloseCurrentConnectionSafelyAsync();
+            }
+            finally
+            {
+                _connectionSemaphore.Release();
+            }
         }
 
         public async Task<T> ExecuteWithRetryAsync<T>(Func<IDbConnection, Task<T>> operation, CancellationToken cancellationToken = default)
         {
-            for (int attempt = 1; attempt <= MaxRetries; attempt++)
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(operation);
+
+            for (var attempt = 1; attempt <= MaxRetries; attempt++)
             {
-
-                IDbConnection connection = null;
+                try
                 {
-                    try
-                    {
-                        connection = await GetConnectionAsync(cancellationToken);
-                        if (connection.State != ConnectionState.Open)
-                        {
-                            _loggingAdapter.LogInformation("ExecuteWithRetryAsync Conexão encontrada fechada antes da operação. Tentando reabrir.");
-                            await EnsureConnectionClosedAsync();
-                            connection = await GetConnectionAsync(cancellationToken);
-                        }
+                    var connection = await GetConnectionAsync(cancellationToken);
+                    ValidateConnectionState(connection);
 
-                        return await operation(connection);
-                    }
-                    catch (SqlException ex) when (IsTransientError(ex) && attempt < MaxRetries)
-                    {
-                        _loggingAdapter.LogError($"[ExecuteWithRetryAsync] Ocorreu um erro temporário (Tentativas {MaxRetries}): {ex.Message}",ex);
-                        await Task.Delay(GetDelayMilliseconds(attempt), cancellationToken);
-                        await EnsureConnectionClosedAsync();
-                    }
-                    catch (InvalidOperationException ex) when ((ex.Message.Contains("closed") || ex.Message.Contains("open")) && attempt < MaxRetries)
-                    {
-                        _loggingAdapter.LogError("ExecuteWithRetryAsync Conexão fechada inesperadamente",ex);
-                        await Task.Delay(GetDelayMilliseconds(attempt), cancellationToken);
-                        await EnsureConnectionClosedAsync();
-                    }
-                    throw new InvalidOperationException($"Operação falhou após {MaxRetries} tentativas");
+                    return await operation(connection);
+                }
+                catch (Exception ex) when (ShouldRetry(ex, attempt))
+                {
+                    _loggingAdapter.LogWarning(
+                        "Tentativa {Attempt}/{MaxRetries} falhou. Erro: {Error}. Tentando novamente...",
+                        attempt, MaxRetries, ex.Message);
+
+                    await Task.Delay(CalculateDelay(attempt), cancellationToken);
+                    await CloseConnectionAsync();
                 }
             }
-            throw new InvalidOperationException($"A operação falhou após {MaxRetries} tentativas");
+
+            throw new InvalidOperationException($"Operação falhou após {MaxRetries} tentativas");
         }
 
-
-        #region PRIVATE 
-
-        private bool IsTransientError(DbException ex)
+        public async Task ExecuteWithRetryAsync(Func<IDbConnection, Task> operation, CancellationToken cancellationToken = default)
         {
-
-#if SqlServerCondition
-
-            int[] transientErrorNumbers = { -2, 10060, 10061, 1205, 50000 }; // Added 50000 for connection closed
-            return transientErrorNumbers.Contains(((SqlException)ex).Number);
-
-#elif PSQLCondition
-
-            // PostgreSQL error codes for transient errors
-            var transientErrorCodes = new[] { "08001", "08006", "40001", "40P01", "57014", "57P01", "57P02", "57P03" };
-            return transientErrorCodes.Contains(((NpgsqlException)ex).SqlState);
-#else
-            return false;
-#endif
+            await ExecuteWithRetryAsync(async connection =>
+            {
+                await operation(connection);
+                return true;
+            }, cancellationToken);
         }
 
-        private AsyncRetryPolicy<IDbConnection> CreateRetryPolicy()
+        #region Private Methods
+
+        private bool ShouldCreateNewConnection()
         {
-            return Policy<IDbConnection>
-                .Handle<SqlException>(ex => IsTransientError(ex))
-                .Or<InvalidOperationException>()
-                .WaitAndRetryAsync(
-                    MaxRetries,
-                    attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                    async (exception, duration, retryCount, context) =>
-                    {
-                        _loggingAdapter.LogWarning(
-                            $"Falha na tentativa de conexão {retryCount}. Nova tentativa em 500ms. Erro: {exception.Exception}",
-                            retryCount,
-                            duration.TotalMilliseconds,
-                            exception.Exception.Message);
-
-                        await EnsureConnectionClosedAsync();
-                    }
-                );
+            return _connection?.State != ConnectionState.Open;
         }
 
-        private async Task EnsureConnectionClosedAsync()
+        private async Task CreateNewConnectionAsync(CancellationToken cancellationToken)
+        {
+            var connectionString = _settings.Value.GetConnectionString();
+
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                throw new InvalidOperationException("Connection string não configurada");
+            }
+
+            _connection = new DbConnection(connectionString);
+            _loggingAdapter.LogDebug("Nova conexão criada para CorrelationId: {CorrelationId}", _correlationId);
+
+            await _connection.OpenAsync(cancellationToken);
+            _loggingAdapter.LogDebug("Conexão aberta com sucesso");
+        }
+
+        private async Task CloseCurrentConnectionSafelyAsync()
         {
             if (_connection == null) return;
 
             var connectionToDispose = _connection;
             _connection = null;
-            await DisposeConnectionAsync(connectionToDispose);
-        }
-
-        private async Task DisposeConnectionAsync(SqlConnection connection)
-        {
-
-            if (connection == null) return;
 
             try
             {
-                if (connection.State != ConnectionState.Closed)
+                if (connectionToDispose.State != ConnectionState.Closed)
                 {
-                    await connection.CloseAsync();
+                    await connectionToDispose.CloseAsync();
                 }
-                await connection.DisposeAsync();
             }
             catch (Exception ex)
             {
-                _loggingAdapter.LogError("Erro fechando conexão", ex);
+                _loggingAdapter.LogWarning("Erro ao fechar conexão: {Error}", ex.Message);
+            }
+            finally
+            {
+                await connectionToDispose.DisposeAsync();
             }
         }
 
-        private int GetDelayMilliseconds(int attempt)
+        private static void ValidateConnectionState(IDbConnection connection)
         {
-            return (int)Math.Pow(2, attempt) * 500; // Exponential backoff: 2s, 4s, 8s...
+            if (connection.State != ConnectionState.Open)
+            {
+                throw new InvalidOperationException("Conexão não está aberta para execução");
+            }
         }
 
+        private bool ShouldRetry(Exception exception, int attempt)
+        {
+            return attempt < MaxRetries && (IsTransientError(exception) || IsConnectionError(exception));
+        }
+
+        private bool IsTransientError(Exception exception)
+        {
+            return exception switch
+            {
+#if SqlServerCondition
+                SqlException sqlEx => new[] { -2, 10060, 10061, 1205, 50000 }.Contains(sqlEx.Number),
+#elif PSQLCondition
+                NpgsqlException npgsqlEx => new[] { "08001", "08006", "40001", "40P01", "57014", "57P01", "57P02", "57P03" }
+                    .Contains(npgsqlEx.SqlState),
+#endif
+                _ => false
+            };
+        }
+
+        private static bool IsConnectionError(Exception exception)
+        {
+            return exception is InvalidOperationException &&
+                   (exception.Message.Contains("closed") || exception.Message.Contains("open"));
+        }
+
+        private AsyncRetryPolicy<IDbConnection> CreateRetryPolicy()
+        {
+            return Policy<IDbConnection>
+                .Handle<DbException>(IsTransientError)
+                .Or<InvalidOperationException>(IsConnectionError)
+                .WaitAndRetryAsync(
+                    MaxRetries,
+                    attempt => TimeSpan.FromMilliseconds(CalculateDelay(attempt)),
+                    async (exception, duration, retryCount, context) =>
+                    {
+                        _loggingAdapter.LogWarning(
+                            "Falha na conexão - Tentativa {RetryCount}. Nova tentativa em {Duration}ms. Erro: {Error}",
+                            retryCount, duration.TotalMilliseconds, exception.Exception.Message);
+
+                        await CloseCurrentConnectionSafelyAsync();
+                    });
+        }
+
+        private static int CalculateDelay(int attempt)
+        {
+            return (int)Math.Pow(2, attempt) * BaseDelayMs; // Exponential backoff
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(SQLConnectionAdapter));
+            }
+        }
 
         #endregion
 
-        #region Dapper Extension Methods for Convenience
 
-        public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object param = null, CancellationToken cancellationToken = default)
+        #region Dapper Extension Methods
+
+        public async Task<IEnumerable<T>> QueryAsync<T>(string sql, object? param = null, CancellationToken cancellationToken = default)
         {
             return await ExecuteWithRetryAsync(async connection =>
-            {
-                return await connection.QueryAsync<T>(sql, param);
-            }, cancellationToken);
+                await connection.QueryAsync<T>(sql, param), cancellationToken);
         }
 
-        public async Task<T> QueryFirstOrDefaultAsync<T>(string sql, object param = null, CancellationToken cancellationToken = default)
+        public async Task<T> QueryFirstOrDefaultAsync<T>(string sql, object? param = null, CancellationToken cancellationToken = default)
         {
-            return await ExecuteWithRetryAsync(async connection =>
-            {
-                return await connection.QueryFirstOrDefaultAsync<T>(sql, param);
-            }, cancellationToken);
+            return (await ExecuteWithRetryAsync(async connection =>
+                await connection.QueryFirstOrDefaultAsync<T>(sql, param), cancellationToken))!;
         }
 
-        public async Task<int> ExecuteAsync(string sql, object param = null, CancellationToken cancellationToken = default)
+        public async Task<int> ExecuteAsync(string sql, object? param = null, CancellationToken cancellationToken = default)
         {
             return await ExecuteWithRetryAsync(async connection =>
-            {
-                return await connection.ExecuteAsync(sql, param);
-            }, cancellationToken);
+                await connection.ExecuteAsync(sql, param), cancellationToken);
         }
 
         #endregion
+        #region IDisposable
 
-
-        public async ValueTask DisposeAsync()
+        public void Dispose()
         {
+            if (_disposed) return;
 
-            await EnsureConnectionClosedAsync();
-            _semaphore.Dispose();
+            lock (_lockObject)
+            {
+                if (_disposed) return;
+                _disposed = true;
+            }
+
+            try
+            {
+                CloseCurrentConnectionSafelyAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _loggingAdapter.LogError("Erro durante dispose da conexão: {Error}", ex, ex.Message);
+            }
+            finally
+            {
+                _connectionSemaphore.Dispose();
+            }
+
             GC.SuppressFinalize(this);
         }
+
+        #endregion
 
     }
 }

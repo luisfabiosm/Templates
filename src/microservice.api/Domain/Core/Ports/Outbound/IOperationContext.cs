@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 
-namespace Domain.Core.Interfaces.Outbound
+namespace Domain.Core.Ports.Outbound
 {
     public interface IOperationContext : IDisposable
     {

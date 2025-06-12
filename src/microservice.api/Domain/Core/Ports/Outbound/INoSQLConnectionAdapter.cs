@@ -1,6 +1,6 @@
 ﻿using MongoDB.Driver;
 
-namespace Domain.Core.Interfaces.Outbound
+namespace Domain.Core.Ports.Outbound
 {
     public interface INoSQLConnectionAdapter 
     {

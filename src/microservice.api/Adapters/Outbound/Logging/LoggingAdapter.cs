@@ -1,4 +1,4 @@
-﻿using Domain.Core.Interfaces.Outbound;
+﻿using Domain.Core.Ports.Outbound;
 using Serilog;
 using System.Diagnostics;
 

@@ -1,6 +1,6 @@
 ﻿using Domain.Core.Base;
-using Domain.Core.Interfaces.Domain;
 using Domain.Core.Models.Dto;
+using Domain.Core.Ports.Domain;
 
 namespace Domain.Services
 {

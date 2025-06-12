@@ -5,9 +5,9 @@ using Domain.UseCases.Sample.GetSampleTask;
 using Domain.UseCases.Sample.ListSampleTask;
 using Domain.UseCases.Sample.UpdateSampleTaskTimer;
 
-namespace Domain.Core.Interfaces.Outbound
+namespace Domain.Core.Ports.Outbound
 {
-    public interface ISQLSampleRepository : IDisposable
+    public interface INoSQLSampleRepository
     {
 
 

@@ -1,4 +1,4 @@
-﻿using Domain.Core.Interfaces.Outbound;
+﻿using Domain.Core.Ports.Outbound;
 using Domain.Core.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
@@ -8,9 +8,8 @@ using System.Data.Common;
 
 namespace Domain.Core.Base
 {
-    public class BaseNoSQLRepository: BaseService, IDisposable
+    public class BaseNoSQLRepository : BaseService, IDisposable
     {
-
         protected INoSQLConnectionAdapter _dbConnectionAdapter;
         protected readonly IOptions<DBSettings> _dbsettings;
 
@@ -20,9 +19,7 @@ namespace Domain.Core.Base
             _dbsettings = serviceProvider.GetRequiredService<IOptions<DBSettings>>();
         }
 
-
         #region DISPOSE
-
 
         private bool _disposed = false;
 
@@ -37,7 +34,7 @@ namespace Domain.Core.Base
             if (!_disposed)
             {
                 if (disposing)
-                { 
+                {
                     (_dbConnectionAdapter as IDisposable)?.Dispose();
                     _dbConnectionAdapter = null;
                 }
@@ -45,8 +42,6 @@ namespace Domain.Core.Base
                 _disposed = true;
             }
         }
-
-
 
         #endregion
     }
