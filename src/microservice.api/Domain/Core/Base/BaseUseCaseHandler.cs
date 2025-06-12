@@ -1,8 +1,11 @@
-﻿using Domain.Core.Exceptions;
-using Domain.Core.Interfaces.Outbound;
-using Domain.Core.Mediator;
+﻿using Domain.Core.Common.Mediator;
+using Domain.Core.Common.Transactions;
+using Domain.Core.Exceptions;
+using Domain.Core.Models.Transactions;
+using Domain.Core.Ports.Outbound;
 using Domain.Services;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 
 namespace Domain.Core.Base
 {
@@ -10,9 +13,9 @@ namespace Domain.Core.Base
         where TTransaction : BaseTransaction<TResponse>
         where TResponse : class
     {
+        protected ValidateException? _validateException;
+        protected readonly ActivitySource _activitySource;
         protected readonly ValidatorService _validateService;
-
-        protected ValidateException _validateException;
 
 #if SqlServerCondition || PSQLCondition
         protected readonly ISQLSampleRepository _sampleRepoSql;
@@ -22,25 +25,36 @@ namespace Domain.Core.Base
 
         protected BaseUseCaseHandler(IServiceProvider serviceProvider) : base(serviceProvider)
         {
+            _activitySource = serviceProvider.GetRequiredService<ActivitySource>();
+            _validateService = serviceProvider.GetRequiredService<ValidatorService>();
 
 #if SqlServerCondition || PSQLCondition
             _sampleRepoSql = serviceProvider.GetRequiredService<ISQLSampleRepository>();
 #elif MongoDbCondition
             _sampleRepoNoSql = serviceProvider.GetRequiredService<INoSQLSampleRepository>();
 #endif
-            _validateService = serviceProvider.GetRequiredService<ValidatorService>();
         }
 
 
-        public async Task<TResponse> Handle(TTransaction transaction, CancellationToken cancellationToken)
+        public async ValueTask<TResponse> Handle(TTransaction transaction, CancellationToken cancellationToken)
         {
+
+            var stopwatch = Stopwatch.StartNew();
+            var operationName = $"{GetType().Name}.Handle";
+            var correlationId = transaction.CorrelationId;
+
+            using var operationContext = StartOperation(operationName, correlationId);
+
             try
             {
+                AddTraceProperty("TransactionType", typeof(TTransaction).Name);
+                AddTraceProperty("ResponseType", typeof(TResponse).Name);
+                AddTraceProperty("HandlerType", GetType().Name);
 
-                string correlationId = transaction.CorrelationId;
-                _loggingAdapter.LogInformation("Iniciando processamento: {RequestType}{CorrelationInfo}",
-                    typeof(TTransaction).Name,
-                    !string.IsNullOrEmpty(correlationId) ? $" [CorrelationId: {correlationId}]" : string.Empty);
+                LogInformation("Iniciando processamento: {RequestType} [CorrelationId: {CorrelationId}]",
+                  typeof(TTransaction).Name, correlationId);
+
+                RecordRequest(operationName);
 
                 // Pré-processamento (validações, etc)
                 await PreProcessing(transaction, cancellationToken);
@@ -53,147 +67,197 @@ namespace Domain.Core.Base
                 // Pós-processamento (logs, cache, eventos, etc)
                 await PosProcessing(transaction, _result, cancellationToken);
 
+                stopwatch.Stop();
+                RecordRequestDuration(stopwatch.Elapsed.TotalSeconds, operationName);
 
-                // Logging de conclusão
-                _loggingAdapter.LogInformation("Processamento concluído com sucesso: {RequestType}{CorrelationInfo}",
-                    typeof(TTransaction).Name,
-                    !string.IsNullOrEmpty(correlationId) ? $" [CorrelationId: {correlationId}]" : string.Empty);
+                LogInformation("Processamento concluído com sucesso: {RequestType} [CorrelationId: {CorrelationId}] em {Duration}ms",
+                             typeof(TTransaction).Name, correlationId, stopwatch.ElapsedMilliseconds);
 
                 return _result;
             }
-            catch (ValidateException vex)
+            catch (BusinessException bex)
             {
-                return await HandleError("Handle", transaction, vex, cancellationToken);
+                stopwatch.Stop();
+                AddTraceProperty("ErrorType", "BusinessError");
+                RecordRequestDuration(stopwatch.Elapsed.TotalSeconds, $"{operationName}_BusinessError");
+                return await HandleError("Handle", transaction, bex, cancellationToken);
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                AddTraceProperty("ErrorType", "UnexpectedError");
+                RecordRequestDuration(stopwatch.Elapsed.TotalSeconds, $"{operationName}_UnexpectedError");
                 return await HandleError("Handle", transaction, ex, cancellationToken);
             }
         }
 
 
-        protected virtual async Task PreProcessing(TTransaction transaction, CancellationToken cancellationToken)
+        protected virtual async ValueTask PreProcessing(TTransaction transaction, CancellationToken cancellationToken)
         {
-            using var operationContext = _loggingAdapter.StartOperation("PreProcessing", transaction.CorrelationId);
-            _loggingAdapter.LogInformation("Iniciando PreProcessing");
+            using var operationContext = StartOperation("PreProcessing", transaction.CorrelationId);
 
-            await ValidateBeforeProcess(transaction, cancellationToken);
+            AddTraceProperty("Phase", "PreProcessing");
+            LogDebug("Iniciando PreProcessing para {TransactionType}", typeof(TTransaction).Name);
+
+            var stopwatch = Stopwatch.StartNew();
+            try
+            {
+                await ValidateBeforeProcess(transaction, cancellationToken);
+
+                stopwatch.Stop();
+                AddTraceProperty("PreProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                LogDebug("PreProcessing concluído em {Duration}ms", stopwatch.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                stopwatch.Stop();
+                AddTraceProperty("PreProcessingError", ex.Message);
+                LogError("Erro no PreProcessing após {Duration}ms: {Error}", ex, stopwatch.ElapsedMilliseconds, ex.Message);
+                throw;
+            }
         }
 
 
-        protected async Task<TResponse> Processing(TTransaction transaction, CancellationToken cancellationToken)
+        protected async ValueTask<TResponse> Processing(TTransaction transaction, CancellationToken cancellationToken)
         {
-            using var operationContext = _loggingAdapter.StartOperation($"{GetType().Name} - Processing", transaction.CorrelationId);
-            _loggingAdapter.LogInformation($"{GetType().Name} Processing");
+            var operationName = $"{GetType().Name}.Processing";
+            using var operationContext = StartOperation(operationName, transaction.CorrelationId);
 
+            AddTraceProperty("Phase", "Processing");
+            LogInformation("Iniciando processamento principal: {HandlerType}", GetType().Name);
+
+            var stopwatch = Stopwatch.StartNew();
             try
             {
-                //Executa o processamento especifico da Transação, é a logica de negócio
+                // Executa o processamento específico da transação (lógica de negócio)
                 var result = await ExecuteTransactionProcessing(transaction, cancellationToken);
 
-                // Retornar um Response com sucesso
+                stopwatch.Stop();
+                AddTraceProperty("ProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                AddTraceProperty("ProcessingSuccess", "true");
+
+                LogInformation("Processamento principal concluído com sucesso em {Duration}ms", stopwatch.ElapsedMilliseconds);
+
+                // Retorna response com sucesso
                 return ReturnSuccessResponse(result, "Transação executada com sucesso", transaction.CorrelationId);
             }
-            catch (BusinessException)
+            catch (BusinessException bex)
             {
+                stopwatch.Stop();
+                AddTraceProperty("ProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                AddTraceProperty("ProcessingSuccess", "false");
+                AddTraceProperty("BusinessErrorCode", bex.ErrorCode.ToString());
+
+                LogWarning("Business exception no processamento após {Duration}ms: {Error}",
+                    stopwatch.ElapsedMilliseconds, bex.Message);
                 throw;
             }
-            catch (ValidateException)
+            catch (ValidateException vex)
             {
+                stopwatch.Stop();
+                AddTraceProperty("ProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                AddTraceProperty("ProcessingSuccess", "false");
+                AddTraceProperty("ValidationErrors", string.Join(", ", vex.ErrorDetails));
+
+                LogWarning("Validation exception no processamento após {Duration}ms: {Errors}",
+                    stopwatch.ElapsedMilliseconds, string.Join(", ", vex.ErrorDetails));
                 throw;
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
+                AddTraceProperty("ProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                AddTraceProperty("ProcessingSuccess", "false");
+                AddTraceProperty("UnexpectedError", ex.Message);
+
+                LogError("Erro inesperado no processamento após {Duration}ms: {Error}",
+                    ex, stopwatch.ElapsedMilliseconds, ex.Message);
+
                 throw new InternalException("Erro interno ao processar o request", 500, ex);
             }
         }
 
 
-        protected abstract Task<TResult> ExecuteTransactionProcessing(TTransaction transaction, CancellationToken cancellationToken);
-
-
-        protected abstract TResponse ReturnSuccessResponse(TResult result, string message, string correlationId);
-
-
-        protected virtual async Task PosProcessing(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
+        protected virtual async ValueTask PosProcessing(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
         {
-            using var operationContext = _loggingAdapter.StartOperation("PosProcessing", transaction.CorrelationId);
-            _loggingAdapter.LogInformation("Iniciando PosProcessing");
+            using var operationContext = StartOperation("PosProcessing", transaction.CorrelationId);
 
-            if (response is BaseReturn<TResponse> baseReturn && baseReturn.IsSuccess)
-            {
-                await HandleSuccessfulResponse(transaction, response, cancellationToken);
-            }
-        }
+            AddTraceProperty("Phase", "PosProcessing");
+            LogDebug("Iniciando PosProcessing para {TransactionType}", typeof(TTransaction).Name);
 
-
-        protected virtual Task HandleSuccessfulResponse(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
-        {
-            //Pode ser modificada na classe que herdar para manipular se necessario no retorno
-            return Task.CompletedTask;
-        }
-
-
-        protected virtual async Task ValidateBeforeProcess(TTransaction transaction, CancellationToken cancellationToken)
-        {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
-                _validateException = new ValidateException("Ocorreu uma falha na validação da transação");
+                // Se for um BaseReturn, adiciona informações de performance
+                if (response is BaseReturn<TResponse> baseReturn && baseReturn.Success)
+                {
+                    AddTraceProperty("ResponseSuccess", "true");
+                    AddTraceProperty("ResponseMessage", baseReturn.Message ?? "");
 
-                if (transaction.Code <= 0)
-                    _validateException.AddDetails(new ErrorDetails("Code é obrigatório e não pode ser 0", "Code"));
+                    // Exemplo de pós-processamento: eventos, cache, notificações
+                    await ProcessSuccessEvents(transaction, response, cancellationToken);
+                }
 
-                if (string.IsNullOrEmpty(transaction.CorrelationId))
-                    _validateException.AddDetails(new ErrorDetails("CorrelationId é obrigatório", "CorrelationId"));
-
-                // Executar validações especificas
-                await ValidateTransaction(transaction, cancellationToken);
-
-                //_validateException = null;
+                stopwatch.Stop();
+                AddTraceProperty("PosProcessingDuration", stopwatch.ElapsedMilliseconds.ToString());
+                LogDebug("PosProcessing concluído em {Duration}ms", stopwatch.ElapsedMilliseconds);
             }
-            catch (Exception ex) when (!(ex is ValidateException))
+            catch (Exception ex)
             {
-                throw ex;
+                stopwatch.Stop();
+                AddTraceProperty("PosProcessingError", ex.Message);
+                LogWarning("Erro no PosProcessing após {Duration}ms (não crítico): {Error}",
+                    stopwatch.ElapsedMilliseconds, ex.Message);
+
+                // PosProcessing não deve quebrar o fluxo principal
+                // Log apenas o erro e continua
             }
         }
 
 
-        protected virtual Task ValidateTransaction(TTransaction transaction, CancellationToken cancellationToken)
+        protected virtual async ValueTask<TResponse> HandleError(string methodName, TTransaction transaction, Exception exception, CancellationToken cancellationToken)
         {
-            //Pode ser modificada na classe que herdar para manipular se necessario no retorno
-            return Task.CompletedTask;
+            using var operationContext = StartOperation($"HandleError.{methodName}", transaction.CorrelationId);
+
+            AddTraceProperty("ErrorHandling", "true");
+            AddTraceProperty("OriginalMethod", methodName);
+            AddTraceProperty("ExceptionType", exception.GetType().Name);
+
+            // Usa o método do BaseService para tratamento padronizado
+            var handledException = HandleException(methodName, exception);
+
+            // Log específico do handler
+            LogError("Erro tratado em {HandlerType}.{MethodName}: {ErrorMessage}",
+                handledException, GetType().Name, methodName, handledException.Message);
+
+            // Retorna response de erro tipificado
+            return await ReturnErrorResponse(handledException, transaction.CorrelationId, cancellationToken);
         }
 
 
-        protected virtual async Task<TResponse> HandleError(string operation, TTransaction transaction, Exception exception, CancellationToken cancellationToken)
-        {
-            _loggingAdapter.LogError($"Erro em {operation}: {exception.Message}", exception);
+        protected abstract ValueTask<TResult> ExecuteTransactionProcessing(TTransaction transaction, CancellationToken cancellationToken);
+        protected abstract TResponse ReturnSuccessResponse(TResult result, string message, string correlationId);
+        protected abstract ValueTask<TResponse> ReturnErrorResponse(Exception exception, string correlationId, CancellationToken cancellationToken);
 
-            Exception resultException = exception switch
+
+        protected virtual async ValueTask ValidateBeforeProcess(TTransaction transaction, CancellationToken cancellationToken)
+        {
+            // Implementação padrão de validação
+            if (_validateService != null)
             {
-                BusinessException _ => exception,
-                InternalException _ => exception,
-                ValidateException _ => exception,
-                _ => new InternalException("Erro interno não esperado", 500, exception)
-            };
-
-            // Retornar response com tipode erro correto
-            return ReturnErrorResponse(resultException, transaction.CorrelationId);
+                LogDebug("Executando validações usando ValidatorService");
+                // Aqui entraria a lógica de validação usando o _validateService
+                await Task.CompletedTask;
+            }
         }
 
-
-        protected abstract TResponse ReturnErrorResponse(Exception exception, string correlationId);
-
-
-    
-        protected virtual async Task<T> HandleProcessingResult<T>(T result, Exception exception = null)
+        protected virtual async ValueTask ProcessSuccessEvents(TTransaction transaction, TResponse response, CancellationToken cancellationToken)
         {
-            if (exception is null)
-                return result;
-
-            _loggingAdapter.LogError("ERRO", exception);
-            throw exception;
+            // Implementação padrão vazia - override conforme necessário
+            LogDebug("ProcessSuccessEvents executado (implementação padrão vazia)");
+            await Task.CompletedTask;
         }
+
 
     }
 

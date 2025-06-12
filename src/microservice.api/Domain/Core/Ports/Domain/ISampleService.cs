@@ -1,6 +1,6 @@
 ﻿using Domain.Core.Models.Dto;
 
-namespace Domain.Core.Interfaces.Domain
+namespace Domain.Core.Ports.Domain
 {
     public interface ISampleService
     {

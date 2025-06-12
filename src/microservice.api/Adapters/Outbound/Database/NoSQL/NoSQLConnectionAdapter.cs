@@ -7,7 +7,7 @@ using Polly.Wrap;
 using System.Net.Sockets;
 using Adapters.Outbound.Logging;
 using Domain.Core.Settings;
-using Domain.Core.Interfaces.Outbound;
+using Domain.Core.Ports.Outbound;
 
 namespace Adapters.Outbound.Database.NoSQL
 {
@@ -16,145 +16,154 @@ namespace Adapters.Outbound.Database.NoSQL
         private readonly IOptions<DBSettings> _settings;
         private readonly MongoClient _client;
         private readonly IMongoDatabase _database;
-        private IClientSessionHandle _session;
         private readonly AsyncPolicyWrap _resiliencePolicy;
-        private bool _disposed = false;
-        private readonly string _databaseName;
-        private string _CorrelationId;
+        private readonly SemaphoreSlim _sessionSemaphore;
+        private readonly object _lockObject = new();
 
+        private volatile bool _disposed;
+        private IClientSessionHandle? _session;
+        private string _correlationId = string.Empty;
+
+        private const int MaxRetries = 3;
+        private const int CircuitBreakerThreshold = 5;
+        private const int TimeoutSeconds = 30;
 
         public NoSQLConnectionAdapter(IServiceProvider serviceProvider) : base(serviceProvider)
         {
             _settings = serviceProvider.GetRequiredService<IOptions<DBSettings>>();
-            _resiliencePolicy = CreateResiliencePolicy(); 
-            _client = new MongoClient(_settings.Value.GetNoSQLConnectionString());
-            _database = _client.GetDatabase(_databaseName);
+            _resiliencePolicy = CreateResiliencePolicy();
+            _sessionSemaphore = new SemaphoreSlim(1, 1);
+
+            var connectionString = _settings.Value.GetNoSQLConnectionString();
+            _client = new MongoClient(connectionString);
+            _database = _client.GetDatabase(_settings.Value.Database);
+
+            _loggingAdapter.LogDebug("NoSQL Connection Adapter inicializado para database: {Database}",
+                _settings.Value.Database);
         }
 
         public void SetCorrelationId(string correlationId)
         {
-            _CorrelationId = correlationId;
+            _correlationId = correlationId ?? string.Empty;
         }
-
 
         public IMongoCollection<T> GetCollection<T>(string collectionName)
         {
+            ThrowIfDisposed();
+            ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
+
             return _database.GetCollection<T>(collectionName);
         }
 
 
-        private AsyncPolicyWrap CreateResiliencePolicy()
-        {
-            // Política de retry - tenta 3 vezes com backoff exponencial
-            var retryPolicy = Policy
-                .Handle<MongoConnectionException>()
-                .Or<TimeoutException>()
-                .Or<SocketException>()
-                .WaitAndRetryAsync(
-                    3,
-                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    (exception, timeSpan, retryCount, context) =>
-                    {
-                        _loggingAdapter.LogError($"Tentativa {retryCount}: Erro ao conectar. Tentando novamente em {timeSpan.TotalSeconds} segundos. Erro: {exception.Message}", exception);                        
-                    }
-                );
-
-            // Política de timeout - limita o tempo de espera para 30 segundos
-            var timeoutPolicy = Policy.TimeoutAsync(30);
-
-            // Circuit Breaker - abre o circuito após 5 falhas consecutivas
-            var circuitBreakerPolicy = Policy
-                .Handle<MongoConnectionException>()
-                .Or<TimeoutException>()
-                .CircuitBreakerAsync(
-                    5,
-                    TimeSpan.FromMinutes(1),
-                    (ex, breakDuration) =>
-                    {
-                        _loggingAdapter.LogError($"Circuito aberto por {breakDuration.TotalMinutes} minutos devido a: {ex.Message}", ex);
-                    },
-                    () =>
-                    {
-                        _loggingAdapter.LogInformation("Circuito fechado. Conexões restabelecidas.");
-                    }
-                );
-
-            // Combina as políticas (é executado de dentro para fora)
-            return Policy.WrapAsync(retryPolicy, timeoutPolicy, circuitBreakerPolicy);
-        }
-
         public async Task<bool> TestConnectionAsync()
         {
+            ThrowIfDisposed();
+
             try
             {
                 return await _resiliencePolicy.ExecuteAsync(async () =>
                 {
-                    // Executa um comando simples para verificar se a conexão está funcionando
                     await _database.RunCommandAsync<dynamic>(new MongoDB.Bson.BsonDocument("ping", 1));
+                    _loggingAdapter.LogDebug("Teste de conexão NoSQL bem-sucedido");
                     return true;
                 });
             }
             catch (Exception ex)
             {
-                _loggingAdapter.LogError($"Erro ao testar conexão: {ex.Message}", ex);
+                _loggingAdapter.LogError("Erro ao testar conexão NoSQL: {Error}", ex, ex.Message);
                 return false;
             }
         }
 
         public async Task BeginTransactionAsync()
         {
-            if (_session != null)
+            ThrowIfDisposed();
+
+            await _sessionSemaphore.WaitAsync();
+            try
             {
-                _loggingAdapter.LogError($"Uma transação já está em andamento");
-                throw new InvalidOperationException("Uma transação já está em andamento");
+                if (_session != null)
+                {
+                    _loggingAdapter.LogWarning("Uma transação já está em andamento para CorrelationId: {CorrelationId}",
+                        _correlationId);
+                    throw new InvalidOperationException("Uma transação já está em andamento");
+                }
+
+                _session = await _resiliencePolicy.ExecuteAsync(async () =>
+                    await _client.StartSessionAsync());
+
+                _session.StartTransaction();
+                _loggingAdapter.LogDebug("Transação NoSQL iniciada com sucesso");
             }
-
-            _session = await _resiliencePolicy.ExecuteAsync(async () =>
-                await _client.StartSessionAsync()
-            );
-            _session.StartTransaction();
+            finally
+            {
+                _sessionSemaphore.Release();
+            }
         }
-
 
         public async Task CommitTransactionAsync()
         {
-            if (_session == null)
+            ThrowIfDisposed();
+
+            await _sessionSemaphore.WaitAsync();
+            try
             {
-                _loggingAdapter.LogError($"Nenhuma transação em andamento");
-                throw new InvalidOperationException("Nenhuma transação em andamento");
+                if (_session == null)
+                {
+                    _loggingAdapter.LogWarning("Tentativa de commit sem transação ativa para CorrelationId: {CorrelationId}",
+                        _correlationId);
+                    throw new InvalidOperationException("Nenhuma transação em andamento");
+                }
+
+                await _resiliencePolicy.ExecuteAsync(async () =>
+                {
+                    await _session.CommitTransactionAsync();
+                });
+
+                _loggingAdapter.LogDebug("Transação NoSQL commitada com sucesso");
             }
-
-            await _resiliencePolicy.ExecuteAsync(async () =>
+            finally
             {
-                await _session.CommitTransactionAsync();
-            });
-
-            _session.Dispose();
-            _session = null;
+                await DisposeCurrentSessionSafelyAsync();
+                _sessionSemaphore.Release();
+            }
         }
-
 
         public async Task AbortTransactionAsync()
         {
-            if (_session == null)
+            ThrowIfDisposed();
+
+            await _sessionSemaphore.WaitAsync();
+            try
             {
-                _loggingAdapter.LogError($"Nenhuma transação em andamento");
-                throw new InvalidOperationException("Nenhuma transação em andamento");
+                if (_session == null)
+                {
+                    _loggingAdapter.LogWarning("Tentativa de abort sem transação ativa para CorrelationId: {CorrelationId}",
+                        _correlationId);
+                    throw new InvalidOperationException("Nenhuma transação em andamento");
+                }
+
+                await _resiliencePolicy.ExecuteAsync(async () =>
+                {
+                    await _session.AbortTransactionAsync();
+                });
+
+                _loggingAdapter.LogDebug("Transação NoSQL abortada com sucesso");
             }
-
-            await _resiliencePolicy.ExecuteAsync(async () =>
+            finally
             {
-                await _session.AbortTransactionAsync();
-            });
-
-            _session.Dispose();
-            _session = null;
+                await DisposeCurrentSessionSafelyAsync();
+                _sessionSemaphore.Release();
+            }
         }
-
 
         public async Task<T> ExecuteAsync<T>(Func<IClientSessionHandle, Task<T>> operation, bool useTransaction = true)
         {
-            bool createdNewTransaction = false;
+            ThrowIfDisposed();
+            ArgumentNullException.ThrowIfNull(operation);
+
+            var createdNewTransaction = false;
 
             try
             {
@@ -164,24 +173,22 @@ namespace Adapters.Outbound.Database.NoSQL
                     createdNewTransaction = true;
                 }
 
-                // Executa a operação com as políticas de resiliência
                 return await _resiliencePolicy.ExecuteAsync(async () =>
                 {
-                    if (useTransaction)
+                    if (useTransaction && _session != null)
                     {
                         return await operation(_session);
                     }
-                    else
-                    {
-                        // Operação sem transação
-                        using var tempSession = await _client.StartSessionAsync();
-                        return await operation(tempSession);
-                    }
+
+                    // Operação sem transação - usa sessão temporária
+                    using var tempSession = await _client.StartSessionAsync();
+                    return await operation(tempSession);
                 });
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Em caso de erro, aborta a transação se tiver sido criada aqui
+                _loggingAdapter.LogError("Erro durante execução de operação NoSQL: {Error}", ex, ex.Message);
+
                 if (createdNewTransaction && _session != null)
                 {
                     await AbortTransactionAsync();
@@ -190,7 +197,6 @@ namespace Adapters.Outbound.Database.NoSQL
             }
             finally
             {
-                // Confirma a transação se tiver sido criada aqui
                 if (createdNewTransaction && _session != null)
                 {
                     await CommitTransactionAsync();
@@ -200,42 +206,124 @@ namespace Adapters.Outbound.Database.NoSQL
 
         public async Task ExecuteAsync(Func<IClientSessionHandle, Task> operation, bool useTransaction = true)
         {
-            await ExecuteAsync(async (session) =>
+            await ExecuteAsync(async session =>
             {
                 await operation(session);
                 return true;
             }, useTransaction);
         }
 
-
         public async Task<TResult> QueryAsync<T, TResult>(string collectionName, Func<IMongoCollection<T>, Task<TResult>> queryOperation)
         {
+            ThrowIfDisposed();
+            ArgumentException.ThrowIfNullOrWhiteSpace(collectionName);
+            ArgumentNullException.ThrowIfNull(queryOperation);
+
             var collection = GetCollection<T>(collectionName);
-            return await _resiliencePolicy.ExecuteAsync(async () => await queryOperation(collection));
+
+            return await _resiliencePolicy.ExecuteAsync(async () =>
+            {
+                _loggingAdapter.LogDebug("Executando query na collection: {Collection}", collectionName);
+                return await queryOperation(collection);
+            });
         }
 
- 
+        #region Private Methods
 
+        private AsyncPolicyWrap CreateResiliencePolicy()
+        {
+            var retryPolicy = Policy
+                .Handle<MongoConnectionException>()
+                .Or<TimeoutException>()
+                .Or<SocketException>()
+                .WaitAndRetryAsync(
+                    MaxRetries,
+                    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                    (exception, timeSpan, retryCount, context) =>
+                    {
+                        _loggingAdapter.LogWarning(
+                            "Tentativa {RetryCount}: Erro ao conectar NoSQL. Tentando novamente em {TimeSpan} segundos. Erro: {Error}",
+                            retryCount, timeSpan.TotalSeconds, exception.Message);
+                    }
+                );
 
-        #region Dispose
+            var timeoutPolicy = Policy.TimeoutAsync(TimeoutSeconds);
+
+            var circuitBreakerPolicy = Policy
+                .Handle<MongoConnectionException>()
+                .Or<TimeoutException>()
+                .CircuitBreakerAsync(
+                    CircuitBreakerThreshold,
+                    TimeSpan.FromMinutes(1),
+                    (ex, breakDuration) =>
+                    {
+                        _loggingAdapter.LogError(
+                            "Circuit Breaker NoSQL aberto por {BreakDuration} minutos devido a: {Error}",
+                            ex, breakDuration.TotalMinutes, ex.Message);
+                    },
+                    () =>
+                    {
+                        _loggingAdapter.LogInformation("Circuit Breaker NoSQL fechado. Conexões restabelecidas");
+                    }
+                );
+
+            return Policy.WrapAsync(retryPolicy, timeoutPolicy, circuitBreakerPolicy);
+        }
+
+        private async Task DisposeCurrentSessionSafelyAsync()
+        {
+            if (_session == null) return;
+
+            var sessionToDispose = _session;
+            _session = null;
+
+            try
+            {
+                sessionToDispose.Dispose();
+                await Task.CompletedTask; // Para manter a assinatura async
+            }
+            catch (Exception ex)
+            {
+                _loggingAdapter.LogWarning("Erro ao fazer dispose da sessão NoSQL: {Error}", ex.Message);
+            }
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(NoSQLConnectionAdapter));
+            }
+        }
+
+        #endregion
+
+        #region IDisposable
 
         public void Dispose()
         {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
+            if (_disposed) return;
 
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!_disposed)
+            lock (_lockObject)
             {
-                if (disposing)
-                {
-                    _session?.Dispose();
-                }
-
+                if (_disposed) return;
                 _disposed = true;
             }
+
+            try
+            {
+                DisposeCurrentSessionSafelyAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _loggingAdapter.LogError("Erro durante dispose da sessão NoSQL: {Error}", ex, ex.Message);
+            }
+            finally
+            {
+                _sessionSemaphore.Dispose();
+            }
+
+            GC.SuppressFinalize(this);
         }
 
         #endregion

@@ -1,37 +1,72 @@
 ﻿using Adapters.Outbound.Database.NoSQL.Sample;
-using Domain.Core.Interfaces.Outbound;
+using Domain.Core.Ports.Outbound;
 using Domain.Core.Settings;
 
 namespace Adapters.Outbound.Database.NoSQL
 {
     public static class NOSQLAdapterExtensions
     {
-
         public static IServiceCollection AddNoSQLAdapter(this IServiceCollection services, IConfiguration configuration)
         {
-
-            #region Mongo Session Management
-
+            #region NoSQL MongoDB Session Management
 
             services.Configure<DBSettings>(options =>
             {
-                var _settings = configuration.GetSection("AppSettings:DB");
+                var dbSection = configuration.GetSection("AppSettings:DB");
 
-                options.ServerUrl = Environment.GetEnvironmentVariable("CLUSTER_SERVER") ?? _settings.GetValue<string>("ServerUrl");
-                options.Username = Environment.GetEnvironmentVariable("USER") ?? _settings.GetValue<string>("Username");
-                options.Password = Environment.GetEnvironmentVariable("CRIPT_PASSWORD") ?? _settings.GetValue<string>("Password");
-                options.Database = Environment.GetEnvironmentVariable("DATABASE") ?? _settings.GetValue<string>("Database");
-                options.CommandTimeout = _settings.GetValue<int>("CommandTimeout");
-                options.ConnectTimeout = _settings.GetValue<int>("ConnectTimeout");
+                // Configurações específicas do MongoDB
+                options.ServerUrl = GetEnvironmentVariableOrDefault("MONGODB_SERVER", dbSection.GetValue<string>("ServerUrl")) ?? string.Empty;
+                options.Username = GetEnvironmentVariableOrDefault("MONGODB_USER", dbSection.GetValue<string>("Username")) ?? string.Empty;
+                options.Password = GetEnvironmentVariableOrDefault("MONGODB_PASSWORD", dbSection.GetValue<string>("Password")) ?? string.Empty;
+                options.Database = GetEnvironmentVariableOrDefault("MONGODB_DATABASE", dbSection.GetValue<string>("Database")) ?? string.Empty;
+                options.CommandTimeout = dbSection.GetValue<int>("CommandTimeout", 30);
+                options.ConnectTimeout = dbSection.GetValue<int>("ConnectTimeout", 30);
+                options.Port = dbSection.GetValue<int>("Port", 27017);
+
+                // Validações
+                ValidateNoSQLConfiguration(options);
             });
 
-
-            services.AddScoped<INoSQLConnectionAdapter, NoSQLConnectionAdapter>();
+            // Registrar serviços NoSQL
+            services.AddSingleton<INoSQLConnectionAdapter, NoSQLConnectionAdapter>();
             services.AddScoped<INoSQLSampleRepository, NoSQLSampleRepository>();
 
             return services;
 
             #endregion
+        }
+
+        private static string? GetEnvironmentVariableOrDefault(string environmentVariable, string? defaultValue)
+        {
+            return Environment.GetEnvironmentVariable(environmentVariable) ?? defaultValue;
+        }
+
+        private static void ValidateNoSQLConfiguration(DBSettings settings)
+        {
+            if (string.IsNullOrWhiteSpace(settings.ServerUrl))
+            {
+                throw new InvalidOperationException("MongoDB ServerUrl não pode ser nulo ou vazio");
+            }
+
+            if (string.IsNullOrWhiteSpace(settings.Database))
+            {
+                throw new InvalidOperationException("MongoDB Database não pode ser nulo ou vazio");
+            }
+
+            if (settings.CommandTimeout <= 0)
+            {
+                throw new InvalidOperationException("MongoDB CommandTimeout deve ser maior que zero");
+            }
+
+            if (settings.ConnectTimeout <= 0)
+            {
+                throw new InvalidOperationException("MongoDB ConnectTimeout deve ser maior que zero");
+            }
+
+            if (settings.Port <= 0)
+            {
+                throw new InvalidOperationException("MongoDB Port deve ser maior que zero");
+            }
         }
     }
 }
